@@ -59,6 +59,13 @@ st.markdown("""
         padding: 1rem;
         margin: 0.5rem 0;
     }
+    .success-box {
+        background-color: #e8f5e9;
+        border-left: 5px solid #4caf50;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        margin: 1rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -75,6 +82,8 @@ if 'insights' not in st.session_state:
     st.session_state.insights = None
 if 'anomalies' not in st.session_state:
     st.session_state.anomalies = None
+if 'auto_merged' not in st.session_state:
+    st.session_state.auto_merged = False
 
 # Sidebar navigation
 st.sidebar.title("📡 Telecom Analytics")
@@ -83,7 +92,7 @@ st.sidebar.markdown("---")
 # Main navigation
 page = st.sidebar.radio(
     "Navigation",
-    ["🏠 Home", "📤 Upload & Process", "🔗 Data Relationships", "🚨 Alerts & Anomalies", 
+    ["🏠 Home", "📤 Upload & Process", "🚨 Alerts & Anomalies", 
      "👥 Subscriber Analytics", "📱 Device Analytics", "📞 Usage Analytics", 
      "🗺️ Regional Performance", "📊 Comparisons", "💾 Export & Reports"]
 )
@@ -91,10 +100,10 @@ page = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.info("""
 **Quick Tips:**
-- Upload multiple Excel/CSV files
-- Tool auto-detects relationships
+- Upload Excel/CSV files
+- Get instant insights
 - AI flags critical issues
-- Export dashboards & reports
+- Export reports easily
 """)
 
 # Helper function for metrics display
@@ -113,12 +122,10 @@ if page == "🏠 Home":
     ### Welcome to the Dynamic Telecom Analytics Platform
     
     **Key Features:**
-    - 🔄 **Dynamic Multi-File Processing** - Handle any telecom data structure
-    - 🤖 **AI-Powered Anomaly Detection** - Automatic issue flagging
-    - 📊 **Comprehensive Dashboards** - Subscriber, Usage, Device, Regional analytics
-    - 🔗 **Smart Data Linking** - Auto-detect relationships across files
-    - 📈 **Trend Analysis** - WoW, MoM, QoQ comparisons
-    - 💾 **Easy Export** - Download processed data and reports
+    - 🔄 **Smart File Processing** - Upload and analyze instantly
+    - 🤖 **AI-Powered Insights** - Automatic issue detection
+    - 📊 **Interactive Dashboards** - Comprehensive analytics
+    - 💾 **Easy Export** - Download reports with one click
     
     ---
     
@@ -132,7 +139,7 @@ if page == "🏠 Home":
     
     ### Getting Started:
     1. Go to **📤 Upload & Process** to upload your files
-    2. Review detected **🔗 Data Relationships**
+    2. System automatically connects your data
     3. Check **🚨 Alerts & Anomalies** for critical insights
     4. Explore various analytics dashboards
     5. Export reports from **💾 Export & Reports**
@@ -169,17 +176,17 @@ if page == "🏠 Home":
             st.metric("Last Updated", datetime.now().strftime("%Y-%m-%d %H:%M"))
 
 # ============================================================================
-# PAGE: UPLOAD & PROCESS
+# PAGE: UPLOAD & PROCESS (SIMPLIFIED)
 # ============================================================================
 elif page == "📤 Upload & Process":
     st.title("📤 Upload & Process Data Files")
     
     st.markdown("""
-    Upload your telecom data files (Excel or CSV). The tool will:
+    Upload your telecom data files (Excel or CSV). The system will automatically:
     - Read all worksheets from each file
-    - Detect data types and structures
-    - Preview your data
-    - Identify potential linking columns
+    - Detect relationships between files
+    - Merge data intelligently
+    - Generate insights
     """)
     
     # File uploader
@@ -187,15 +194,15 @@ elif page == "📤 Upload & Process":
         "Upload Files (Excel/CSV)",
         type=['xlsx', 'xls', 'csv'],
         accept_multiple_files=True,
-        help="Upload 3-4 files. Each Excel file can contain multiple worksheets."
+        help="Upload one or more files. System will auto-process them."
     )
     
     if uploaded_files:
         st.success(f"✅ {len(uploaded_files)} file(s) uploaded successfully!")
         
         # Process button
-        if st.button("🔄 Process Files", type="primary"):
-            with st.spinner("Processing files... This may take a moment for large files."):
+        if st.button("🚀 Process & Analyze", type="primary", use_container_width=True):
+            with st.spinner("Processing your data... This may take a moment."):
                 try:
                     # Initialize file processor
                     processor = FileProcessor()
@@ -205,35 +212,88 @@ elif page == "📤 Upload & Process":
                     st.session_state.processed_data = processed_data
                     st.session_state.uploaded_files = uploaded_files
                     
+                    # Count total sheets
+                    total_sheets = sum(len(f['sheets']) for f in processed_data)
+                    total_records = sum(s['row_count'] for f in processed_data for s in f['sheets'].values())
+                    
                     st.success("✅ Files processed successfully!")
                     
-                    # Display summary
-                    st.subheader("📋 Processing Summary")
+                    # Auto-detect and merge
+                    st.info("🔗 Connecting your data...")
                     
-                    for file_info in processed_data:
-                        with st.expander(f"📁 {file_info['filename']} ({len(file_info['sheets'])} sheet(s))"):
-                            for sheet_name, sheet_data in file_info['sheets'].items():
-                                st.markdown(f"**Sheet: {sheet_name}**")
-                                st.write(f"- Rows: {sheet_data['row_count']:,}")
-                                st.write(f"- Columns: {sheet_data['column_count']}")
-                                st.write(f"- Column Names: {', '.join(sheet_data['columns'][:10])}" + 
-                                       ("..." if len(sheet_data['columns']) > 10 else ""))
-                                
-                                # Data preview
-                                st.dataframe(sheet_data['preview'], use_container_width=True)
-                                st.markdown("---")
-                    
-                    # Auto-detect relationships
-                    st.subheader("🔗 Detecting Relationships...")
+                    # Detect relationships
                     detector = RelationshipDetector()
                     relationships = detector.detect_relationships(processed_data)
                     st.session_state.relationships = relationships
                     
+                    # Auto-merge the data
+                    merger = DataMerger()
+                    
+                    # Use outer join by default to keep all data
                     if relationships:
-                        st.success(f"✅ Found {len(relationships)} potential relationship(s)!")
-                        st.info("👉 Go to **🔗 Data Relationships** page to review and confirm.")
-                    else:
-                        st.warning("⚠️ No automatic relationships detected. You can manually configure them.")
+                        for rel in relationships:
+                            rel['join_type'] = 'outer'  # Keep all records
+                    
+                    merged_data = merger.merge_data(processed_data, relationships)
+                    st.session_state.merged_data = merged_data
+                    st.session_state.auto_merged = True
+                    
+                    # Show success summary
+                    st.markdown(f"""
+                    <div class="success-box">
+                        <h3>✅ Data Successfully Processed!</h3>
+                        <p><strong>📁 Files:</strong> {len(processed_data)}</p>
+                        <p><strong>📋 Worksheets:</strong> {total_sheets}</p>
+                        <p><strong>📊 Total Records:</strong> {len(merged_data):,}</p>
+                        <p><strong>🔗 Connections Found:</strong> {len(relationships) if relationships else 'None (analyzing files separately)'}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Show connection details if any
+                    if relationships:
+                        with st.expander("📋 Data Connections Used", expanded=False):
+                            for idx, rel in enumerate(relationships, 1):
+                                st.write(f"**Connection {idx}:** {rel['source_file']} → {rel['target_file']}")
+                                st.write(f"   Connected by: `{rel['source_column']}` ↔ `{rel['target_column']}`")
+                                st.write(f"   Confidence: {rel['confidence']}")
+                                st.markdown("---")
+                    
+                    # Data preview
+                    st.subheader("👀 Data Preview (First 10 Rows)")
+                    st.dataframe(merged_data.head(10), use_container_width=True)
+                    
+                    # Run analytics automatically
+                    st.info("🤖 Running AI analytics...")
+                    
+                    # Calculate telecom metrics
+                    metrics_calc = TelecomMetrics()
+                    metrics = metrics_calc.calculate_metrics(merged_data)
+                    
+                    # Detect anomalies
+                    anomaly_detector = AnomalyDetector()
+                    anomalies = anomaly_detector.detect_anomalies(merged_data, metrics)
+                    st.session_state.anomalies = anomalies
+                    
+                    # Generate insights
+                    insights_gen = InsightsGenerator()
+                    insights = insights_gen.generate_insights(merged_data, metrics, anomalies)
+                    st.session_state.insights = insights
+                    
+                    # Show quick summary
+                    critical_count = len([a for a in anomalies if a['severity'] == 'Critical'])
+                    warning_count = len([a for a in anomalies if a['severity'] == 'Warning'])
+                    
+                    st.success("✅ Analysis complete!")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("🔴 Critical Alerts", critical_count)
+                    with col2:
+                        st.metric("🟡 Warnings", warning_count)
+                    with col3:
+                        st.metric("📊 Insights Generated", len(insights.get('key_findings', [])))
+                    
+                    st.info("👉 Go to **🚨 Alerts & Anomalies** to see detailed insights!")
                     
                 except Exception as e:
                     st.error(f"❌ Error processing files: {str(e)}")
@@ -245,147 +305,23 @@ elif page == "📤 Upload & Process":
         
         # Display current data summary
         st.subheader("📋 Current Data Summary")
-        for file_info in st.session_state.processed_data:
-            st.write(f"📁 **{file_info['filename']}** - {len(file_info['sheets'])} sheet(s)")
-
-# ============================================================================
-# PAGE: DATA RELATIONSHIPS
-# ============================================================================
-elif page == "🔗 Data Relationships":
-    st.title("🔗 Data Relationships")
-    
-    if not st.session_state.processed_data:
-        st.warning("⚠️ Please upload and process files first from the **📤 Upload & Process** page.")
-    else:
-        st.markdown("""
-        Review and confirm the detected relationships between your data files.
-        These relationships will be used to merge data for comprehensive analysis.
-        """)
         
-        if st.session_state.relationships:
-            st.subheader("🔍 Detected Relationships")
-            
-            # Display relationships
-            for idx, rel in enumerate(st.session_state.relationships):
-                with st.expander(f"Relationship {idx + 1}: {rel['confidence']} confidence", expanded=True):
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.write("**Source:**")
-                        st.write(f"- File: {rel['source_file']}")
-                        st.write(f"- Sheet: {rel['source_sheet']}")
-                        st.write(f"- Column: `{rel['source_column']}`")
-                    
-                    with col2:
-                        st.write("**Target:**")
-                        st.write(f"- File: {rel['target_file']}")
-                        st.write(f"- Sheet: {rel['target_sheet']}")
-                        st.write(f"- Column: `{rel['target_column']}`")
-                    
-                    st.write(f"**Match Score:** {rel['match_score']:.2%}")
-                    st.write(f"**Common Values:** {rel['common_values']}")
-        else:
-            st.info("ℹ️ No automatic relationships detected.")
-        
-        # Manual relationship configuration
-        st.subheader("⚙️ Manual Relationship Configuration")
-        
-        with st.form("manual_relationship"):
-            st.write("Add a custom relationship between sheets:")
-            
-            col1, col2 = st.columns(2)
-            
-            # Get list of all sheets
-            all_sheets = []
-            for file_info in st.session_state.processed_data:
-                for sheet_name in file_info['sheets'].keys():
-                    all_sheets.append(f"{file_info['filename']} → {sheet_name}")
-            
+        if st.session_state.merged_data is not None:
+            col1, col2, col3 = st.columns(3)
             with col1:
-                source_sheet = st.selectbox("Source Sheet", all_sheets)
-                # Get columns for source
-                if source_sheet:
-                    file_name, sheet_name = source_sheet.split(" → ")
-                    file_data = next(f for f in st.session_state.processed_data if f['filename'] == file_name)
-                    source_cols = file_data['sheets'][sheet_name]['columns']
-                    source_col = st.selectbox("Source Column", source_cols)
-            
+                st.metric("Files", len(st.session_state.processed_data))
             with col2:
-                target_sheet = st.selectbox("Target Sheet", all_sheets)
-                # Get columns for target
-                if target_sheet:
-                    file_name, sheet_name = target_sheet.split(" → ")
-                    file_data = next(f for f in st.session_state.processed_data if f['filename'] == file_name)
-                    target_cols = file_data['sheets'][sheet_name]['columns']
-                    target_col = st.selectbox("Target Column", target_cols)
-            
-            join_type = st.selectbox("Join Type", ["inner", "left", "right", "outer"])
-            
-            if st.form_submit_button("➕ Add Relationship"):
-                # Add manual relationship
-                if not st.session_state.relationships:
-                    st.session_state.relationships = []
-                
-                manual_rel = {
-                    'source_file': source_sheet.split(" → ")[0],
-                    'source_sheet': source_sheet.split(" → ")[1],
-                    'source_column': source_col,
-                    'target_file': target_sheet.split(" → ")[0],
-                    'target_sheet': target_sheet.split(" → ")[1],
-                    'target_column': target_col,
-                    'join_type': join_type,
-                    'confidence': 'Manual',
-                    'match_score': 1.0,
-                    'common_values': 'User defined'
-                }
-                
-                st.session_state.relationships.append(manual_rel)
-                st.success("✅ Relationship added!")
-                st.rerun()
+                st.metric("Total Records", f"{len(st.session_state.merged_data):,}")
+            with col3:
+                if st.session_state.anomalies:
+                    st.metric("Alerts", len(st.session_state.anomalies))
         
-        # Merge data button
-        st.markdown("---")
-        if st.button("🔀 Merge Data Based on Relationships", type="primary"):
-            if st.session_state.relationships:
-                with st.spinner("Merging data... This may take a moment."):
-                    try:
-                        merger = DataMerger()
-                        merged_data = merger.merge_data(
-                            st.session_state.processed_data,
-                            st.session_state.relationships
-                        )
-                        st.session_state.merged_data = merged_data
-                        
-                        st.success(f"✅ Data merged successfully! Total rows: {len(merged_data):,}")
-                        
-                        # Show preview
-                        st.subheader("📊 Merged Data Preview")
-                        st.dataframe(merged_data.head(100), use_container_width=True)
-                        
-                        # Run analytics
-                        st.info("🤖 Running AI analytics and anomaly detection...")
-                        
-                        # Calculate telecom metrics
-                        metrics_calc = TelecomMetrics()
-                        metrics = metrics_calc.calculate_metrics(merged_data)
-                        
-                        # Detect anomalies
-                        anomaly_detector = AnomalyDetector()
-                        anomalies = anomaly_detector.detect_anomalies(merged_data, metrics)
-                        st.session_state.anomalies = anomalies
-                        
-                        # Generate insights
-                        insights_gen = InsightsGenerator()
-                        insights = insights_gen.generate_insights(merged_data, metrics, anomalies)
-                        st.session_state.insights = insights
-                        
-                        st.success("✅ Analytics complete! Check **🚨 Alerts & Anomalies** page.")
-                        
-                    except Exception as e:
-                        st.error(f"❌ Error merging data: {str(e)}")
-                        st.exception(e)
-            else:
-                st.warning("⚠️ Please define at least one relationship before merging.")
+        # Option to view connections
+        if st.session_state.relationships:
+            with st.expander("View Data Connections"):
+                for idx, rel in enumerate(st.session_state.relationships, 1):
+                    st.write(f"**{idx}.** {rel['source_file']} ↔ {rel['target_file']}")
+                    st.write(f"   via `{rel['source_column']}` = `{rel['target_column']}`")
 
 # ============================================================================
 # PAGE: ALERTS & ANOMALIES (Main USP)
@@ -394,7 +330,7 @@ elif page == "🚨 Alerts & Anomalies":
     st.title("🚨 Alerts & Anomalies")
     
     if not st.session_state.merged_data:
-        st.warning("⚠️ Please process and merge data first.")
+        st.warning("⚠️ Please upload and process files first from the **📤 Upload & Process** page.")
     else:
         st.markdown("### AI-Powered Issue Detection")
         
@@ -514,7 +450,7 @@ elif page == "👥 Subscriber Analytics":
     st.title("👥 Subscriber Analytics")
     
     if not st.session_state.merged_data:
-        st.warning("⚠️ Please process and merge data first.")
+        st.warning("⚠️ Please process data first from the **📤 Upload & Process** page.")
     else:
         df = st.session_state.merged_data
         viz = Visualizations()
@@ -619,7 +555,7 @@ elif page == "📱 Device Analytics":
     st.title("📱 Device Format Analytics")
     
     if not st.session_state.merged_data:
-        st.warning("⚠️ Please process and merge data first.")
+        st.warning("⚠️ Please process data first from the **📤 Upload & Process** page.")
     else:
         df = st.session_state.merged_data
         
@@ -694,7 +630,7 @@ elif page == "📞 Usage Analytics":
     st.title("📞 Usage Analytics")
     
     if not st.session_state.merged_data:
-        st.warning("⚠️ Please process and merge data first.")
+        st.warning("⚠️ Please process data first from the **📤 Upload & Process** page.")
     else:
         df = st.session_state.merged_data
         
@@ -769,7 +705,7 @@ elif page == "🗺️ Regional Performance":
     st.title("🗺️ Regional Performance")
     
     if not st.session_state.merged_data:
-        st.warning("⚠️ Please process and merge data first.")
+        st.warning("⚠️ Please process data first from the **📤 Upload & Process** page.")
     else:
         df = st.session_state.merged_data
         
@@ -844,7 +780,7 @@ elif page == "📊 Comparisons":
     st.title("📊 Period Comparisons")
     
     if not st.session_state.merged_data:
-        st.warning("⚠️ Please process and merge data first.")
+        st.warning("⚠️ Please process data first from the **📤 Upload & Process** page.")
     else:
         df = st.session_state.merged_data
         
@@ -990,7 +926,7 @@ elif page == "💾 Export & Reports":
     st.title("💾 Export & Reports")
     
     if not st.session_state.merged_data:
-        st.warning("⚠️ Please process and merge data first.")
+        st.warning("⚠️ Please process data first from the **📤 Upload & Process** page.")
     else:
         st.markdown("""
         ### Download Options
@@ -1012,7 +948,8 @@ elif page == "💾 Export & Reports":
                 label="📥 Download as CSV",
                 data=csv,
                 file_name=f"telecom_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv"
+                mime="text/csv",
+                use_container_width=True
             )
         
         with col2:
@@ -1025,7 +962,8 @@ elif page == "💾 Export & Reports":
                 label="📥 Download as Excel",
                 data=buffer.getvalue(),
                 file_name=f"telecom_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
             )
         
         # Export insights
@@ -1081,7 +1019,8 @@ ALERTS & ANOMALIES
                 label="📥 Download Insights Report (TXT)",
                 data=report,
                 file_name=f"insights_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                mime="text/plain"
+                mime="text/plain",
+                use_container_width=True
             )
         else:
             st.info("Generate insights first from the Alerts & Anomalies page.")
@@ -1100,6 +1039,6 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("""
 <div style='text-align: center; color: #666; font-size: 0.8rem;'>
     <p>📡 Telecom Analytics Platform</p>
-    <p>v1.0 | Built with Streamlit</p>
+    <p>v2.0 | Simplified UI</p>
 </div>
 """, unsafe_allow_html=True)

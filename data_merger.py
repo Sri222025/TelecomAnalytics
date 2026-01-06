@@ -46,43 +46,71 @@ class DataMerger:
                 for col in target_df.columns
             ]
             
+            # **FIX: Convert merge columns to same type (string) to avoid type mismatch**
+            try:
+                source_df_renamed[rel['source_column']] = source_df_renamed[rel['source_column']].astype(str).str.strip()
+                target_df_renamed[rel['target_column']] = target_df_renamed[rel['target_column']].astype(str).str.strip()
+            except Exception as e:
+                st.warning(f"Warning: Could not convert columns to string for merging: {str(e)}")
+            
             # Perform merge
             if merged_df is None:
                 # First merge
-                merged_df = pd.merge(
-                    source_df_renamed,
-                    target_df_renamed,
-                    left_on=rel['source_column'],
-                    right_on=rel['target_column'],
-                    how=rel.get('join_type', 'inner'),
-                    suffixes=('', '_dup')
-                )
-                merged_sheets.add(source_key)
-                merged_sheets.add(target_key)
+                try:
+                    merged_df = pd.merge(
+                        source_df_renamed,
+                        target_df_renamed,
+                        left_on=rel['source_column'],
+                        right_on=rel['target_column'],
+                        how=rel.get('join_type', 'inner'),
+                        suffixes=('', '_dup')
+                    )
+                    merged_sheets.add(source_key)
+                    merged_sheets.add(target_key)
+                except Exception as e:
+                    st.error(f"Error in first merge: {str(e)}")
+                    continue
             else:
                 # Subsequent merges
                 if source_key in merged_sheets and target_key not in merged_sheets:
                     # Merge target into existing merged_df
-                    merged_df = pd.merge(
-                        merged_df,
-                        target_df_renamed,
-                        left_on=rel['source_column'],
-                        right_on=rel['target_column'],
-                        how='left',
-                        suffixes=('', '_dup')
-                    )
-                    merged_sheets.add(target_key)
+                    try:
+                        # **FIX: Ensure the column in merged_df is also string type**
+                        if rel['source_column'] in merged_df.columns:
+                            merged_df[rel['source_column']] = merged_df[rel['source_column']].astype(str).str.strip()
+                        
+                        merged_df = pd.merge(
+                            merged_df,
+                            target_df_renamed,
+                            left_on=rel['source_column'],
+                            right_on=rel['target_column'],
+                            how='left',
+                            suffixes=('', '_dup')
+                        )
+                        merged_sheets.add(target_key)
+                    except Exception as e:
+                        st.error(f"Error merging {target_key}: {str(e)}")
+                        continue
+                        
                 elif target_key in merged_sheets and source_key not in merged_sheets:
                     # Merge source into existing merged_df
-                    merged_df = pd.merge(
-                        merged_df,
-                        source_df_renamed,
-                        left_on=rel['target_column'],
-                        right_on=rel['source_column'],
-                        how='left',
-                        suffixes=('', '_dup')
-                    )
-                    merged_sheets.add(source_key)
+                    try:
+                        # **FIX: Ensure the column in merged_df is also string type**
+                        if rel['target_column'] in merged_df.columns:
+                            merged_df[rel['target_column']] = merged_df[rel['target_column']].astype(str).str.strip()
+                        
+                        merged_df = pd.merge(
+                            merged_df,
+                            source_df_renamed,
+                            left_on=rel['target_column'],
+                            right_on=rel['source_column'],
+                            how='left',
+                            suffixes=('', '_dup')
+                        )
+                        merged_sheets.add(source_key)
+                    except Exception as e:
+                        st.error(f"Error merging {source_key}: {str(e)}")
+                        continue
         
         # Add any sheets that weren't merged
         for file_info in processed_data:
@@ -152,8 +180,15 @@ class DataMerger:
         Merge two dataframes on specified columns
         """
         try:
+            # **FIX: Convert merge columns to string before merging**
+            df1_copy = df1.copy()
+            df2_copy = df2.copy()
+            
+            df1_copy[left_on] = df1_copy[left_on].astype(str).str.strip()
+            df2_copy[right_on] = df2_copy[right_on].astype(str).str.strip()
+            
             merged = pd.merge(
-                df1, df2,
+                df1_copy, df2_copy,
                 left_on=left_on,
                 right_on=right_on,
                 how=how,

@@ -65,9 +65,9 @@ class FileProcessor:
             elif pd.api.types.is_datetime64_any_dtype(df[col]):
                 date_cols.append(col)
             else:
-                # Try to convert to datetime
+                # Try to convert to datetime with format='mixed' to avoid warning
                 try:
-                    pd.to_datetime(df[col], errors='raise')
+                    pd.to_datetime(df[col], errors='raise', format='mixed')
                     date_cols.append(col)
                 except:
                     categorical_cols.append(col)

@@ -329,7 +329,7 @@ elif page == "📤 Upload & Process":
 elif page == "🚨 Alerts & Anomalies":
     st.title("🚨 Alerts & Anomalies")
     
-    if not st.session_state.merged_data:
+    if st.session_state.merged_data is None:
         st.warning("⚠️ Please upload and process files first from the **📤 Upload & Process** page.")
     else:
         st.markdown("### AI-Powered Issue Detection")
@@ -449,7 +449,7 @@ elif page == "🚨 Alerts & Anomalies":
 elif page == "👥 Subscriber Analytics":
     st.title("👥 Subscriber Analytics")
     
-    if not st.session_state.merged_data:
+    if st.session_state.merged_data is None:
         st.warning("⚠️ Please process data first from the **📤 Upload & Process** page.")
     else:
         df = st.session_state.merged_data
@@ -554,7 +554,7 @@ elif page == "👥 Subscriber Analytics":
 elif page == "📱 Device Analytics":
     st.title("📱 Device Format Analytics")
     
-    if not st.session_state.merged_data:
+    if st.session_state.merged_data is None:
         st.warning("⚠️ Please process data first from the **📤 Upload & Process** page.")
     else:
         df = st.session_state.merged_data
@@ -629,7 +629,7 @@ elif page == "📱 Device Analytics":
 elif page == "📞 Usage Analytics":
     st.title("📞 Usage Analytics")
     
-    if not st.session_state.merged_data:
+    if st.session_state.merged_data is None:
         st.warning("⚠️ Please process data first from the **📤 Upload & Process** page.")
     else:
         df = st.session_state.merged_data
@@ -704,7 +704,7 @@ elif page == "📞 Usage Analytics":
 elif page == "🗺️ Regional Performance":
     st.title("🗺️ Regional Performance")
     
-    if not st.session_state.merged_data:
+    if st.session_state.merged_data is None:
         st.warning("⚠️ Please process data first from the **📤 Upload & Process** page.")
     else:
         df = st.session_state.merged_data
@@ -779,7 +779,7 @@ elif page == "🗺️ Regional Performance":
 elif page == "📊 Comparisons":
     st.title("📊 Period Comparisons")
     
-    if not st.session_state.merged_data:
+    if st.session_state.merged_data is None:
         st.warning("⚠️ Please process data first from the **📤 Upload & Process** page.")
     else:
         df = st.session_state.merged_data
@@ -925,7 +925,7 @@ elif page == "📊 Comparisons":
 elif page == "💾 Export & Reports":
     st.title("💾 Export & Reports")
     
-    if not st.session_state.merged_data:
+    if st.session_state.merged_data is None:
         st.warning("⚠️ Please process data first from the **📤 Upload & Process** page.")
     else:
         st.markdown("""

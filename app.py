@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import io
+import traceback
 
 # Import our custom modules
 from file_processor import FileProcessor
@@ -70,6 +71,8 @@ if 'ai_insights' not in st.session_state:
     st.session_state.ai_insights = None
 if 'relationships' not in st.session_state:
     st.session_state.relationships = []
+if 'ai_error' not in st.session_state:
+    st.session_state.ai_error = None
 
 # Initialize processors
 file_processor = FileProcessor()
@@ -102,6 +105,11 @@ with st.sidebar:
     if st.session_state.merged_data is not None:
         st.success("✅ Data Loaded")
         st.metric("Records", f"{len(st.session_state.merged_data):,}")
+        
+        if st.session_state.ai_insights is not None:
+            st.success("✅ AI Analysis Done")
+        elif st.session_state.ai_error:
+            st.error("❌ AI Failed")
     else:
         st.info("⏳ No data loaded")
     
@@ -112,7 +120,7 @@ with st.sidebar:
     
     st.markdown("---")
     st.caption("Powered by Groq Llama 3.3 🚀")
-    st.caption("v2.0 - Enhanced Edition")
+    st.caption("v3.0 - Telecom Expert Edition")
 
 # ============================================================================
 # HOME PAGE
@@ -129,10 +137,10 @@ if page == "🏠 Home":
         This AI-powered platform helps you:
         - **📁 Process Multiple Files** - Upload 3-4 Excel/CSV files with multiple sheets
         - **🔗 Auto-Merge Data** - Intelligent detection of relationships between files
-        - **🤖 AI Analysis** - Natural language insights powered by Groq Llama 3.3
-        - **🚨 Anomaly Detection** - Automatic identification of data quality issues
+        - **🤖 AI Analysis** - Deep telecom insights powered by Groq Llama 3.3
+        - **🚨 Anomaly Detection** - Business-critical issues identification
         - **📊 Visual Analytics** - Interactive charts and dashboards
-        - **💡 Smart Recommendations** - Actionable business insights
+        - **💡 Smart Recommendations** - Specific, actionable business plans
         
         ### 🚀 Quick Start
         1. Go to **📤 Upload & Process**
@@ -154,6 +162,8 @@ if page == "🏠 Home":
             
             if st.session_state.ai_insights:
                 st.metric("AI Insights", len(st.session_state.ai_insights.get('key_insights', [])))
+            elif st.session_state.ai_error:
+                st.error(f"AI Error: {st.session_state.ai_error}")
             
             st.markdown('</div>', unsafe_allow_html=True)
             
@@ -162,20 +172,10 @@ if page == "🏠 Home":
                 st.session_state.merged_data = None
                 st.session_state.merge_summary = None
                 st.session_state.ai_insights = None
+                st.session_state.ai_error = None
                 st.rerun()
         else:
             st.info("👈 Upload files to get started")
-            st.markdown("""
-            **Supported Formats:**
-            - Excel (.xlsx, .xls)
-            - CSV files
-            - Multiple sheets per file
-            
-            **Recommended:**
-            - 3-4 related files
-            - Files with common IDs
-            - Telecom datasets
-            """)
 
 # ============================================================================
 # UPLOAD & PROCESS PAGE
@@ -197,6 +197,11 @@ elif page == "📤 Upload & Process":
         
         with col1:
             if st.button("🚀 Process & Analyze", type="primary", use_container_width=True):
+                
+                # Reset AI state
+                st.session_state.ai_insights = None
+                st.session_state.ai_error = None
+                
                 with st.spinner("🔄 Processing files..."):
                     try:
                         # Process each file
@@ -222,6 +227,8 @@ elif page == "📤 Upload & Process":
                         st.session_state.merged_data = merged_data
                         st.session_state.merge_summary = merge_summary
                         
+                        st.success(f"✅ Data merged: {len(merged_data):,} records")
+                        
                         # AI Analysis (if enabled)
                         if has_groq and merged_data is not None:
                             st.text("🤖 Running AI analysis...")
@@ -229,8 +236,16 @@ elif page == "📤 Upload & Process":
                                 ai_engine = AIInsightsEngine(st.secrets['GROQ_API_KEY'])
                                 insights = ai_engine.analyze_data(merged_data, merge_summary)
                                 st.session_state.ai_insights = insights
+                                st.success("✅ AI analysis complete!")
                             except Exception as e:
-                                st.warning(f"AI analysis skipped: {str(e)}")
+                                error_msg = f"{str(e)}\n\nFull traceback:\n{traceback.format_exc()}"
+                                st.session_state.ai_error = error_msg
+                                st.error(f"⚠️ AI analysis failed: {str(e)}")
+                                with st.expander("🔍 Error Details"):
+                                    st.code(error_msg)
+                                st.info("💡 You can still use other features (Data Explorer, Visualizations, Export)")
+                        elif not has_groq:
+                            st.warning("⚠️ AI analysis skipped - GROQ_API_KEY not found in secrets")
                         
                         progress_bar.progress(1.0)
                         st.success("✅ Processing complete!")
@@ -244,6 +259,8 @@ elif page == "📤 Upload & Process":
             if st.button("Clear All", type="secondary"):
                 st.session_state.processed_files = []
                 st.session_state.merged_data = None
+                st.session_state.ai_insights = None
+                st.session_state.ai_error = None
                 st.rerun()
     
     # Show results
@@ -267,12 +284,6 @@ elif page == "📤 Upload & Process":
                 st.info(f"Match rate: {summary.get('match_rate', 'N/A')}")
             else:
                 st.info(summary.get('note', 'Data concatenated'))
-            
-            # Show relationships
-            if st.session_state.relationships:
-                st.write("**Detected Relationships:**")
-                for rel in st.session_state.relationships[:3]:
-                    st.write(f"- `{rel['key_column']}`: {rel['file1']} ↔️ {rel['file2']} ({rel['match_rate']:.1f}% match)")
         
         # Data preview
         with st.expander("👀 Data Preview"):
@@ -288,14 +299,22 @@ elif page == "🤖 AI Insights":
         st.warning("⚠️ Please upload and process files first")
     elif not has_groq:
         st.error("❌ AI features require Groq API key in Streamlit secrets")
+        st.info("Add GROQ_API_KEY to Streamlit Settings → Secrets")
     elif st.session_state.ai_insights is None:
-        st.info("⏳ AI analysis not yet run. Go to Upload & Process page.")
+        if st.session_state.ai_error:
+            st.error("❌ AI analysis failed during processing")
+            with st.expander("🔍 View Error Details"):
+                st.code(st.session_state.ai_error)
+            st.info("💡 Try processing files again or check your data format")
+        else:
+            st.info("⏳ AI analysis not yet run. Go to Upload & Process page and click 'Process & Analyze'")
     else:
         insights = st.session_state.ai_insights
         
         # Executive Summary
         st.subheader("📝 Executive Summary")
-        st.markdown(f'<div class="success-box">{insights.get("executive_summary", "No summary available")}</div>', unsafe_allow_html=True)
+        summary = insights.get("executive_summary", "No summary available")
+        st.markdown(f'<div class="success-box">{summary}</div>', unsafe_allow_html=True)
         
         # Key Insights
         st.subheader("💡 Key Insights")
@@ -308,31 +327,56 @@ elif page == "🤖 AI Insights":
                 
                 with st.expander(f"{icon} Insight {idx}: {insight.get('title', 'N/A')}", expanded=(idx <= 2)):
                     st.write(insight.get('description', ''))
-                    st.caption(f"Impact: {impact.upper()}")
+                    
+                    # Show metrics if available
+                    if 'metrics' in insight:
+                        metrics = insight['metrics']
+                        col1, col2, col3 = st.columns(3)
+                        if 'key_number' in metrics:
+                            col1.metric("Key Metric", metrics['key_number'])
+                        if 'percentage' in metrics:
+                            col2.metric("Percentage", metrics['percentage'])
+                        if 'comparison' in metrics:
+                            col3.metric("Comparison", metrics['comparison'])
+                    
+                    # Show action if available
+                    if 'action' in insight and insight['action']:
+                        st.markdown(f"**🎯 Recommended Action:**")
+                        st.info(insight['action'])
+                    
+                    st.caption(f"Impact: {impact.upper()} | Category: {insight.get('category', 'general')}")
         else:
             st.info("No specific insights generated")
         
         # Recommendations
-        st.subheader("🎯 Recommendations")
+        st.subheader("🎯 Action Plan")
         
         recommendations = insights.get('recommendations', [])
         if recommendations:
-            for rec in recommendations:
+            for idx, rec in enumerate(recommendations, 1):
                 priority = rec.get('priority', 'medium')
                 color = 'critical-box' if priority == 'high' else 'warning-box' if priority == 'medium' else 'success-box'
                 
                 st.markdown(f'<div class="{color}">', unsafe_allow_html=True)
-                st.markdown(f"**{rec.get('category', 'General')}** (Priority: {priority.upper()})")
+                st.markdown(f"**{idx}. {rec.get('category', 'General')}** (Priority: {priority.upper()})")
                 st.write(rec.get('action', ''))
+                
+                if 'rationale' in rec:
+                    st.caption(f"Rationale: {rec['rationale']}")
+                
                 if isinstance(rec.get('details'), list):
                     for detail in rec['details']:
                         st.write(f"- {detail}")
-                else:
-                    st.write(rec.get('details', ''))
+                elif rec.get('details'):
+                    st.write(rec['details'])
+                
+                if 'expected_impact' in rec:
+                    st.caption(f"💰 Expected Impact: {rec['expected_impact']}")
+                
                 st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================================
-# ALERTS & ANOMALIES PAGE
+# ALERTS & ANOMALIES PAGE  
 # ============================================================================
 elif page == "🚨 Alerts & Anomalies":
     st.header("🚨 Alerts & Anomalies")
@@ -345,12 +389,12 @@ elif page == "🚨 Alerts & Anomalies":
         anomalies = st.session_state.ai_insights.get('anomalies', [])
         
         if not anomalies:
-            st.success("✅ No anomalies detected! Data quality looks good.")
+            st.success("✅ No critical anomalies detected! Data quality looks good.")
         else:
             # Summary
-            critical = len([a for a in anomalies if a['severity'] == 'critical'])
-            warnings = len([a for a in anomalies if a['severity'] == 'warning'])
-            info = len([a for a in anomalies if a['severity'] == 'info'])
+            critical = len([a for a in anomalies if a.get('severity') == 'critical'])
+            warnings = len([a for a in anomalies if a.get('severity') == 'warning'])
+            info = len([a for a in anomalies if a.get('severity') == 'info'])
             
             col1, col2, col3 = st.columns(3)
             col1.metric("🔴 Critical", critical)
@@ -359,18 +403,9 @@ elif page == "🚨 Alerts & Anomalies":
             
             st.markdown("---")
             
-            # Filter
-            severity_filter = st.multiselect(
-                "Filter by Severity",
-                ['critical', 'warning', 'info'],
-                default=['critical', 'warning']
-            )
-            
-            filtered_anomalies = [a for a in anomalies if a['severity'] in severity_filter]
-            
             # Display anomalies
-            for anomaly in filtered_anomalies:
-                severity = anomaly['severity']
+            for anomaly in anomalies:
+                severity = anomaly.get('severity', 'info')
                 icon = "🔴" if severity == 'critical' else "🟡" if severity == 'warning' else "🔵"
                 box_class = 'critical-box' if severity == 'critical' else 'warning-box' if severity == 'warning' else 'success-box'
                 
@@ -378,12 +413,8 @@ elif page == "🚨 Alerts & Anomalies":
                 st.markdown(f"### {icon} {anomaly.get('type', 'Unknown').replace('_', ' ').title()}")
                 st.write(anomaly.get('description', ''))
                 
-                if 'column' in anomaly:
-                    st.caption(f"Column: **{anomaly['column']}**")
-                if 'count' in anomaly:
-                    st.caption(f"Affected records: **{anomaly['count']:,}**")
-                if 'percentage' in anomaly:
-                    st.caption(f"Percentage: **{anomaly['percentage']}**")
+                if 'business_impact' in anomaly:
+                    st.caption(f"📊 Business Impact: {anomaly['business_impact']}")
                 
                 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -450,62 +481,61 @@ elif page == "📈 Visualizations":
         df = st.session_state.merged_data
         
         # Get numeric and categorical columns
-        numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-        categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
-        
-        # Remove metadata columns
-        numeric_cols = [c for c in numeric_cols if not c.startswith('_')]
-        categorical_cols = [c for c in categorical_cols if not c.startswith('_')]
+        numeric_cols = [c for c in df.select_dtypes(include=['number']).columns if not c.startswith('_')]
+        categorical_cols = [c for c in df.select_dtypes(include=['object']).columns if not c.startswith('_')]
         
         if not numeric_cols and not categorical_cols:
-            st.info("No suitable columns for visualization")
+            st.info("No suitable columns for visualization. Upload data with numeric or categorical columns.")
         else:
             # Chart type selector
             chart_type = st.selectbox(
                 "Select Chart Type",
-                ["Bar Chart", "Line Chart", "Pie Chart", "Scatter Plot", "Histogram", "Box Plot"]
+                ["Bar Chart", "Line Chart", "Pie Chart", "Histogram"]
             )
             
-            col1, col2 = st.columns(2)
-            
-            if chart_type == "Bar Chart":
-                with col1:
-                    x_col = st.selectbox("X-axis (Category)", categorical_cols)
-                with col2:
-                    y_col = st.selectbox("Y-axis (Metric)", numeric_cols) if numeric_cols else None
-                
-                if x_col and y_col:
-                    # Aggregate data
-                    chart_data = df.groupby(x_col)[y_col].sum().reset_index()
-                    chart_data = chart_data.nlargest(15, y_col)  # Top 15
+            try:
+                if chart_type == "Bar Chart" and categorical_cols and numeric_cols:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        x_col = st.selectbox("X-axis (Category)", categorical_cols)
+                    with col2:
+                        y_col = st.selectbox("Y-axis (Metric)", numeric_cols)
                     
-                    fig = px.bar(chart_data, x=x_col, y=y_col, title=f"{y_col} by {x_col}")
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            elif chart_type == "Line Chart":
-                with col1:
-                    x_col = st.selectbox("X-axis", df.columns.tolist())
-                with col2:
-                    y_col = st.selectbox("Y-axis", numeric_cols)
+                    if x_col and y_col:
+                        chart_data = df.groupby(x_col)[y_col].sum().reset_index()
+                        chart_data = chart_data.nlargest(15, y_col)
+                        fig = px.bar(chart_data, x=x_col, y=y_col, title=f"{y_col} by {x_col}")
+                        st.plotly_chart(fig, use_container_width=True)
                 
-                if x_col and y_col:
-                    fig = px.line(df.head(100), x=x_col, y=y_col, title=f"{y_col} over {x_col}")
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            elif chart_type == "Pie Chart":
-                cat_col = st.selectbox("Category", categorical_cols)
+                elif chart_type == "Pie Chart" and categorical_cols:
+                    cat_col = st.selectbox("Category", categorical_cols)
+                    if cat_col:
+                        chart_data = df[cat_col].value_counts().head(10)
+                        fig = px.pie(values=chart_data.values, names=chart_data.index, 
+                                    title=f"Distribution of {cat_col}")
+                        st.plotly_chart(fig, use_container_width=True)
                 
-                if cat_col:
-                    chart_data = df[cat_col].value_counts().head(10)
-                    fig = px.pie(values=chart_data.values, names=chart_data.index, title=f"Distribution of {cat_col}")
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            elif chart_type == "Histogram":
-                num_col = st.selectbox("Column", numeric_cols)
+                elif chart_type == "Histogram" and numeric_cols:
+                    num_col = st.selectbox("Column", numeric_cols)
+                    if num_col:
+                        fig = px.histogram(df, x=num_col, title=f"Distribution of {num_col}")
+                        st.plotly_chart(fig, use_container_width=True)
                 
-                if num_col:
-                    fig = px.histogram(df, x=num_col, title=f"Distribution of {num_col}")
-                    st.plotly_chart(fig, use_container_width=True)
+                elif chart_type == "Line Chart":
+                    col1, col2 = st.columns(2)
+                    all_cols = [c for c in df.columns if not c.startswith('_')]
+                    with col1:
+                        x_col = st.selectbox("X-axis", all_cols)
+                    with col2:
+                        y_col = st.selectbox("Y-axis", numeric_cols) if numeric_cols else None
+                    
+                    if x_col and y_col:
+                        fig = px.line(df.head(100), x=x_col, y=y_col, title=f"{y_col} over {x_col}")
+                        st.plotly_chart(fig, use_container_width=True)
+                
+            except Exception as e:
+                st.error(f"Error creating visualization: {str(e)}")
+                st.info("Try selecting different columns or chart type")
 
 # ============================================================================
 # EXPORT PAGE
@@ -565,6 +595,8 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             for idx, insight in enumerate(insights.get('key_insights', []), 1):
                 insights_text += f"\n### {idx}. {insight.get('title', 'N/A')}\n"
                 insights_text += f"{insight.get('description', '')}\n"
+                if 'action' in insight:
+                    insights_text += f"**Action:** {insight['action']}\n"
                 insights_text += f"**Impact:** {insight.get('impact', 'N/A')}\n"
             
             st.download_button(

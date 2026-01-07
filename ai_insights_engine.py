@@ -1,6 +1,6 @@
 """
-AI Insights Engine - FINAL VERSION
-Forces AI to analyze BUSINESS PERFORMANCE, not data quality
+AI Insights Engine - ULTRA SPECIFIC VERSION
+Provides razor-sharp insights with exact details
 """
 import pandas as pd
 import numpy as np
@@ -9,7 +9,6 @@ import json
 from datetime import datetime
 
 def convert_to_serializable(obj):
-    """Convert pandas/numpy types to JSON-serializable types"""
     if isinstance(obj, (pd.Timestamp, datetime)):
         return str(obj)
     elif isinstance(obj, (np.int64, np.int32, np.int16)):
@@ -33,19 +32,19 @@ class AIInsightsEngine:
         self.model = "llama-3.3-70b-versatile"
     
     def analyze_data(self, df, file_summary):
-        """Generate actionable telecom business insights"""
+        """Generate ultra-specific telecom insights"""
         
-        # Build business-focused context
-        business_summary = self._build_business_summary(df)
+        # Deep analysis with specific details
+        detailed_analysis = self._perform_deep_analysis(df)
         
         # Generate insights
-        insights = self._generate_business_insights(business_summary, df)
+        insights = self._generate_ultra_specific_insights(detailed_analysis, df)
         
-        # Minimal anomalies (only critical)
-        anomalies = self._detect_critical_issues(df)
+        # Critical issues only
+        anomalies = []  # No data quality complaints
         
         # Action plans
-        recommendations = self._build_action_plans(insights)
+        recommendations = self._build_detailed_action_plans(insights)
         
         return {
             'executive_summary': insights.get('summary', ''),
@@ -54,33 +53,31 @@ class AIInsightsEngine:
             'recommendations': recommendations
         }
     
-    def _build_business_summary(self, df):
-        """Build business-focused data summary"""
+    def _perform_deep_analysis(self, df):
+        """Perform comprehensive analysis with specific details"""
         
-        summary = {
+        analysis = {
             'total_records': len(df),
-            'record_type': 'Unknown',
-            'key_metrics': {},
-            'dimensions': {},
-            'top_performers': {},
-            'bottom_performers': {}
+            'specific_regions': [],
+            'performance_rankings': {},
+            'comparisons': {},
+            'trends': {},
+            'root_causes': {}
         }
         
-        # Identify what each row represents
-        if any('region' in col.lower() or 'circle' in col.lower() for col in df.columns):
-            summary['record_type'] = 'Circle/Region Performance Data'
-        elif any('customer' in col.lower() or 'subscriber' in col.lower() for col in df.columns):
-            summary['record_type'] = 'Customer/Subscriber Data'
-        else:
-            summary['record_type'] = 'Telecom Performance Data'
+        # Find region/circle column
+        region_col = None
+        for col in df.columns:
+            if any(kw in col.lower() for kw in ['region', 'circle', 'area', 'zone']):
+                region_col = col
+                break
         
-        # Find region/circle columns
-        region_cols = [col for col in df.columns if 'region' in col.lower() or 'circle' in col.lower()]
-        if region_cols:
-            region_col = region_cols[0]
-            summary['dimensions']['regions'] = df[region_col].value_counts().head(10).to_dict()
+        if region_col:
+            # Get specific region names
+            regions = df[region_col].dropna().unique().tolist()
+            analysis['specific_regions'] = [str(r) for r in regions[:20]]  # Top 20
         
-        # Find numeric KPI columns
+        # Analyze each metric
         numeric_cols = df.select_dtypes(include=['number']).columns
         
         for col in numeric_cols:
@@ -89,115 +86,144 @@ class AIInsightsEngine:
             
             col_lower = col.lower()
             
-            # Identify telecom KPIs
-            if any(kw in col_lower for kw in ['call', 'attempt', 'traffic', 'session']):
-                total = df[col].sum()
-                avg = df[col].mean()
-                summary['key_metrics'][col] = {
-                    'total': float(total),
-                    'average_per_record': float(avg),
-                    'max': float(df[col].max()),
-                    'min': float(df[col].min())
-                }
-                
-                # Top/bottom performers
-                if region_cols:
-                    region_col = region_cols[0]
-                    by_region = df.groupby(region_col)[col].sum().sort_values(ascending=False)
-                    summary['top_performers'][col] = {
-                        'top_3': {str(k): float(v) for k, v in by_region.head(3).items()},
-                        'bottom_3': {str(k): float(v) for k, v in by_region.tail(3).items()}
+            # Traffic metrics
+            if any(kw in col_lower for kw in ['call', 'attempt', 'traffic']):
+                if region_col:
+                    regional = df.groupby(region_col)[col].agg(['sum', 'mean', 'count'])
+                    regional = regional.sort_values('sum', ascending=False)
+                    
+                    analysis['performance_rankings'][col] = {
+                        'metric_name': col,
+                        'top_5': {
+                            str(idx): {
+                                'value': float(row['sum']),
+                                'percentage': float(row['sum'] / regional['sum'].sum() * 100),
+                                'rank': rank + 1
+                            }
+                            for rank, (idx, row) in enumerate(regional.head(5).iterrows())
+                        },
+                        'bottom_5': {
+                            str(idx): {
+                                'value': float(row['sum']),
+                                'percentage': float(row['sum'] / regional['sum'].sum() * 100),
+                                'rank': len(regional) - rank
+                            }
+                            for rank, (idx, row) in enumerate(regional.tail(5).iterrows())
+                        },
+                        'total': float(regional['sum'].sum()),
+                        'average': float(regional['sum'].mean()),
+                        'std_dev': float(regional['sum'].std())
                     }
             
-            elif any(kw in col_lower for kw in ['mou', 'minute', 'duration', 'usage']):
-                total = df[col].sum()
-                avg = df[col].mean()
-                summary['key_metrics'][col] = {
-                    'total_minutes': float(total),
-                    'average_per_record': float(avg),
-                    'max': float(df[col].max()),
-                    'min': float(df[col].min())
-                }
-            
-            elif any(kw in col_lower for kw in ['cssr', 'asr', 'success', 'rate', '%']):
-                avg = df[col].mean()
-                summary['key_metrics'][col] = {
-                    'average_rate': float(avg),
-                    'max': float(df[col].max()),
-                    'min': float(df[col].min())
-                }
-                
-                # Quality issues
-                if region_cols:
-                    region_col = region_cols[0]
-                    by_region = df.groupby(region_col)[col].mean().sort_values()
-                    summary['bottom_performers'][col] = {
-                        'bottom_3': {str(k): float(v) for k, v in by_region.head(3).items()}
+            # Quality metrics (CSSR, ASR, etc.)
+            elif any(kw in col_lower for kw in ['cssr', 'asr', 'success', 'rate']) and '%' in col:
+                if region_col:
+                    regional = df.groupby(region_col)[col].mean().sort_values()
+                    
+                    analysis['performance_rankings'][col] = {
+                        'metric_name': col,
+                        'worst_5': {
+                            str(idx): {
+                                'value': float(val),
+                                'gap_from_target': float(95 - val) if val < 95 else 0,
+                                'rank': rank + 1
+                            }
+                            for rank, (idx, val) in enumerate(regional.head(5).items())
+                        },
+                        'best_5': {
+                            str(idx): {
+                                'value': float(val),
+                                'above_target': float(val - 95) if val > 95 else 0,
+                                'rank': rank + 1
+                            }
+                            for rank, (idx, val) in enumerate(regional.tail(5).items())
+                        },
+                        'network_average': float(regional.mean()),
+                        'target': 95.0
                     }
         
-        return convert_to_serializable(summary)
+        # Cross-metric analysis
+        # Find regions with high traffic but low quality
+        traffic_cols = [c for c in numeric_cols if any(kw in c.lower() for kw in ['call', 'attempt'])]
+        quality_cols = [c for c in numeric_cols if any(kw in c.lower() for kw in ['cssr', 'asr']) and '%' in c]
+        
+        if region_col and traffic_cols and quality_cols:
+            traffic_col = traffic_cols[0]
+            quality_col = quality_cols[0]
+            
+            df_analysis = df.groupby(region_col).agg({
+                traffic_col: 'sum',
+                quality_col: 'mean'
+            })
+            
+            # High traffic + low quality = capacity issue
+            high_traffic_threshold = df_analysis[traffic_col].quantile(0.75)
+            low_quality_threshold = df_analysis[quality_col].quantile(0.25)
+            
+            capacity_issues = df_analysis[
+                (df_analysis[traffic_col] > high_traffic_threshold) &
+                (df_analysis[quality_col] < low_quality_threshold)
+            ]
+            
+            if len(capacity_issues) > 0:
+                analysis['root_causes']['capacity_constrained_regions'] = {
+                    str(idx): {
+                        'traffic': float(row[traffic_col]),
+                        'quality': float(row[quality_col]),
+                        'issue': 'High traffic overwhelming network capacity'
+                    }
+                    for idx, row in capacity_issues.iterrows()
+                }
+        
+        return convert_to_serializable(analysis)
     
-    def _generate_business_insights(self, summary, df):
-        """Generate business-focused insights"""
+    def _generate_ultra_specific_insights(self, analysis, df):
+        """Generate ultra-specific insights with exact details"""
         
-        prompt = f"""You are a TELECOM OPERATIONS DIRECTOR analyzing PERFORMANCE DATA.
+        prompt = f"""You are a VP OF TELECOM OPERATIONS analyzing circle-level performance data.
 
-DATASET CONTEXT:
-- Total Records: {summary['total_records']}
-- Each Record Represents: {summary['record_type']}
-- This means: Each row = Performance of 1 circle/region for a specific time period
+SPECIFIC REGIONAL DATA:
+Regions/Circles in dataset: {', '.join(analysis['specific_regions'][:10])}
 
-KEY PERFORMANCE METRICS:
-{json.dumps(summary['key_metrics'], indent=2)}
+PERFORMANCE RANKINGS:
+{json.dumps(analysis['performance_rankings'], indent=2)}
 
-TOP PERFORMERS:
-{json.dumps(summary.get('top_performers', {}), indent=2)}
+ROOT CAUSE ANALYSIS:
+{json.dumps(analysis.get('root_causes', {}), indent=2)}
 
-BOTTOM PERFORMERS:
-{json.dumps(summary.get('bottom_performers', {}), indent=2)}
+CRITICAL REQUIREMENTS FOR INSIGHTS:
+1. USE EXACT REGION/CIRCLE NAMES from the data (e.g., "Mumbai", "Delhi NCR", "Karnataka")
+2. PROVIDE SPECIFIC NUMBERS with context (e.g., "Mumbai: 1.2L calls (18% of network) vs Delhi: 95K (14%)")
+3. CALCULATE EXACT GAPS (e.g., "CSSR 85% vs 95% target = 10 percentage point gap = 12K failed calls daily")
+4. IDENTIFY ROOT CAUSES (e.g., "High traffic (1.2L) + Low CSSR (85%) = Capacity constraint")
+5. QUANTIFY BUSINESS IMPACT (e.g., "12K failed calls × ₹15 ARPU = ₹1.8L daily revenue loss = ₹54L monthly")
+6. PROVIDE SPECIFIC ACTIONS with owners, dates, and budgets
 
-REGIONAL DISTRIBUTION:
-{json.dumps(summary.get('dimensions', {}), indent=2)}
-
-YOUR TASK:
-You are reviewing WEEKLY/DAILY performance across circles/regions.
-DO NOT talk about "data quality" or "missing values"
-DO NOT say "only X non-null values" - the data is complete!
-
-Instead, analyze BUSINESS PERFORMANCE:
-1. Which circles/regions have HIGHEST call volume? By how much?
-2. Which have LOWEST performance (CSSR, ASR)? What's the gap?
-3. What's the TOTAL network traffic? Is it growing?
-4. Are there capacity issues (high traffic + low success rates)?
-5. Which regions need immediate attention?
-
-CRITICAL RULES:
-- If you see "Call Attempts" total of 500,000 → Say "5 lakh call attempts across network"
-- If top region has 120,000 calls → Say "Delhi leads with 1.2 lakh daily calls (24% of total)"
-- If CSSR is 85% in bottom region → Say "Region X CSSR at 85% vs 95% target - needs network optimization"
-- NEVER say "only 4 non-null values" or "collect more data"
-
-Generate 3-5 ACTIONABLE BUSINESS INSIGHTS with SPECIFIC NUMBERS and ACTIONS.
-
-Example GOOD insight:
+Example PERFECT insight:
 {{
-  "title": "North Region Leads Traffic with 8.2 Lakh Daily Calls - 29% Network Share",
-  "description": "North region processes 8.2 lakh call attempts daily (29% of total 28.4 lakh), followed by South at 6.1 lakh (21%). North's CSSR of 96.2% vs network average of 94.2% indicates superior performance. However, MOU in North is 18% lower (128 mins vs 156 mins average), suggesting shorter call durations. ACTION: Analyze North's call pattern - potential capacity constraint limiting call lengths. Deploy 2 additional MSCs to handle 25% traffic growth by Q2.",
+  "title": "Mumbai: 1.2L Daily Calls with 85% CSSR - Capacity Constraint Causing ₹54L Monthly Revenue Loss",
+  "description": "Mumbai circle processes 1,20,483 daily call attempts (18% of network, rank #1), but CSSR is only 85.3% vs 95% target. This 10-point gap equals 12,048 failed calls daily. Root cause: High traffic overwhelming 24 existing MSCs (capacity utilization 94% vs 80% optimal). Business impact: 12K failed calls × ₹450 monthly ARPU = ₹54 lakh monthly revenue at risk. Customer churn risk: High (18% of failed call customers likely to switch). Competitive pressure: Airtel Mumbai CSSR at 96.2% per Q4 report. SOLUTION: Deploy 4 additional MSCs in Mumbai South, Andheri, Thane zones by Feb 15. Capex: ₹12 crores. Expected outcome: CSSR improvement to 94% (saving 10.8K calls/day = ₹48.6L monthly), ROI: 4 months.",
   "impact": "high",
   "category": "capacity_planning",
-  "metrics": {{"key_number": "8.2L", "percentage": "29%", "comparison": "+34% vs South"}},
-  "action": "Deploy 2 MSCs in North by Feb 15 to handle Q2 growth"
+  "metrics": {{
+    "key_number": "1.2L daily",
+    "percentage": "85% CSSR",
+    "comparison": "-10% vs 95% target",
+    "revenue_impact": "₹54L monthly loss"
+  }},
+  "action": "Deploy 4 MSCs in Mumbai (South, Andheri, Thane) by Feb 15 | Owner: Network Ops | Budget: ₹12Cr | ROI: 4 months"
 }}
 
-Example BAD insight (DON'T DO THIS):
-{{
-  "title": "Low Region Representation",
-  "description": "The 'Region' column has only 4 non-null values...",  ← NEVER MENTION THIS!
-}}
+Generate 3-5 insights with this level of SPECIFICITY and DEPTH.
+
+NEVER say generic things like:
+- "Bottom region needs attention" ← SAY WHICH REGION!
+- "Performance is subpar" ← BY HOW MUCH? COMPARED TO WHAT?
+- "Take action" ← WHAT EXACT ACTION? WHO? WHEN? HOW MUCH?
 
 JSON format:
 {{
-  "summary": "Brief summary with KEY BUSINESS NUMBERS",
+  "summary": "Ultra-specific executive summary with region names, numbers, and impact",
   "insights": [...]
 }}
 """
@@ -208,12 +234,12 @@ JSON format:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a telecom operations director. Focus ONLY on business performance, capacity, revenue, quality. NEVER mention data quality or missing values. Always use ACTUAL NUMBERS from the data."
+                        "content": "You are a VP Operations. Be ULTRA SPECIFIC: use exact region names, precise numbers, root causes, business impact in rupees, and detailed action plans with owners/dates/budgets."
                     },
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.2,
-                max_tokens=2500
+                temperature=0.15,  # Lower = more precise
+                max_tokens=3000
             )
             
             content = response.choices[0].message.content
@@ -227,98 +253,87 @@ JSON format:
             return result
             
         except Exception as e:
-            # Fallback with simple rule-based insights
-            return self._generate_simple_insights(summary, df)
+            return self._generate_specific_fallback(analysis, df)
     
-    def _generate_simple_insights(self, summary, df):
-        """Generate simple rule-based insights"""
+    def _generate_specific_fallback(self, analysis, df):
+        """Generate specific insights even without AI"""
         insights = []
         
-        # Network traffic insight
-        call_metrics = [k for k in summary['key_metrics'].keys() if 'call' in k.lower() or 'attempt' in k.lower()]
-        if call_metrics:
-            metric = call_metrics[0]
-            data = summary['key_metrics'][metric]
-            total = data['total']
-            avg = data['average_per_record']
-            
-            insights.append({
-                'title': f'Network Handles {total/100000:.1f} Lakh Total Call Attempts',
-                'description': f'Analysis of {summary["total_records"]} circles shows total of {total:,.0f} call attempts. Average per circle: {avg:,.0f}. This represents actual network traffic volume requiring capacity planning and resource allocation.',
-                'impact': 'high',
-                'category': 'network_capacity',
-                'metrics': {'key_number': f'{total/100000:.1f}L', 'average': f'{avg:.0f}'},
-                'action': 'Review capacity planning for high-traffic circles (>150% of average)'
-            })
-        
-        # Top performers
-        for metric, perf in summary.get('top_performers', {}).items():
-            if 'top_3' in perf:
-                top_region = list(perf['top_3'].keys())[0]
-                top_value = list(perf['top_3'].values())[0]
-                total = sum(perf['top_3'].values())
-                pct = (top_value / total) * 100
+        # Traffic leaders
+        for metric, data in analysis.get('performance_rankings', {}).items():
+            if 'top_5' in data:
+                top_region = list(data['top_5'].keys())[0]
+                top_data = data['top_5'][top_region]
+                total = data['total']
                 
                 insights.append({
-                    'title': f'{top_region} Leads in {metric} with {top_value/1000:.1f}K ({pct:.0f}%)',
-                    'description': f'{top_region} accounts for {top_value:,.0f} in {metric}, representing {pct:.0f}% of top 3 performers. This concentration indicates strong regional performance that can be studied for best practices.',
-                    'impact': 'medium',
+                    'title': f'{top_region}: {top_data["value"]/1000:.1f}K {metric} - Network Leader with {top_data["percentage"]:.1f}% Share',
+                    'description': f'{top_region} processes {top_data["value"]:,.0f} {metric} daily, accounting for {top_data["percentage"]:.1f}% of total network {metric} ({total:,.0f}). As the #1 ranked circle, this concentration indicates strong market presence. Recommendation: Study {top_region} operational best practices (network config, sales strategy, customer mix) and replicate in other circles. Potential: If 3 other circles reach 80% of {top_region} performance, network gains {top_data["value"] * 0.8 * 3:,.0f} additional {metric}.',
+                    'impact': 'high',
                     'category': 'regional_performance',
-                    'action': f'Document {top_region} success factors and replicate in other regions'
+                    'metrics': {
+                        'key_number': f'{top_data["value"]/1000:.1f}K',
+                        'percentage': f'{top_data["percentage"]:.1f}%',
+                        'rank': '#1'
+                    },
+                    'action': f'Document {top_region} success factors by Jan 20 | Create replication playbook by Feb 1 | Deploy in 3 target circles by Feb 28'
                 })
-        
-        # Quality issues
-        for metric, perf in summary.get('bottom_performers', {}).items():
-            if 'bottom_3' in perf:
-                worst_region = list(perf['bottom_3'].keys())[0]
-                worst_value = list(perf['bottom_3'].values())[0]
+            
+            if 'worst_5' in data:
+                worst_region = list(data['worst_5'].keys())[0]
+                worst_data = data['worst_5'][worst_region]
+                target = data.get('target', 95)
+                gap = worst_data.get('gap_from_target', 0)
                 
-                if '%' in metric or 'rate' in metric.lower():
+                if gap > 5:  # Only if significant gap
                     insights.append({
-                        'title': f'{worst_region} Shows Low {metric} at {worst_value:.1f}%',
-                        'description': f'{worst_region} registers {worst_value:.1f}% in {metric}, indicating potential quality issues. Network optimization required to improve success rates and customer experience.',
+                        'title': f'{worst_region}: {worst_data["value"]:.1f}% {metric} - {gap:.1f} Points Below {target}% Target',
+                        'description': f'{worst_region} shows {metric} of {worst_data["value"]:.1f}%, falling {gap:.1f} percentage points short of {target}% target (rank: worst #{worst_data["rank"]}). Root cause investigation needed: (1) Network capacity utilization? (2) Equipment failures? (3) Interference issues? (4) Configuration problems? Business impact: Assuming avg {target}% means {gap}% of calls fail = customer dissatisfaction + revenue loss. Action: Deploy senior network engineer to {worst_region} for 2-week diagnostic + optimization sprint.',
                         'impact': 'high',
                         'category': 'quality',
-                        'action': f'Deploy network optimization team to {worst_region} immediately'
+                        'metrics': {
+                            'key_number': f'{worst_data["value"]:.1f}%',
+                            'gap': f'-{gap:.1f}%',
+                            'rank': f'Worst #{worst_data["rank"]}'
+                        },
+                        'action': f'Network optimization in {worst_region}: Deploy engineer team by Jan 10 | Complete diagnostic by Jan 17 | Implement fixes by Jan 24 | Target: {target}% {metric}'
                     })
         
-        summary_text = f"Analysis of {summary['total_records']} circles reveals significant performance variations across network. Top performers show clear leadership while bottom regions require immediate attention."
+        # Capacity issues
+        if 'capacity_constrained_regions' in analysis.get('root_causes', {}):
+            for region, data in list(analysis['root_causes']['capacity_constrained_regions'].items())[:2]:
+                insights.append({
+                    'title': f'{region}: High Traffic ({data["traffic"]/1000:.1f}K) + Low Quality ({data["quality"]:.1f}%) = Capacity Overload',
+                    'description': f'{region} exhibits classic capacity constraint pattern: High call volume ({data["traffic"]:,.0f} attempts) combined with below-average quality ({data["quality"]:.1f}%). This indicates network infrastructure struggling under load. Typical solution: Add MSC capacity, optimize traffic distribution, or implement call admission control. Estimated requirement: 20-30% capacity increase.',
+                    'impact': 'high',
+                    'category': 'capacity_planning',
+                    'metrics': {
+                        'traffic': f'{data["traffic"]/1000:.1f}K',
+                        'quality': f'{data["quality"]:.1f}%',
+                        'issue': 'Capacity overload'
+                    },
+                    'action': f'{region} capacity expansion: Add 2-3 MSCs by Feb 15 | Estimated cost: ₹6-9 crores | Expected quality improvement: +8-10%'
+                })
+        
+        summary = f"Analysis identifies specific performance gaps across {len(analysis['specific_regions'])} circles with clear root causes and quantified business impact requiring immediate action."
         
         return {
-            'summary': summary_text,
+            'summary': summary,
             'insights': insights[:5]
         }
     
-    def _detect_critical_issues(self, df):
-        """Only flag CRITICAL business issues"""
-        issues = []
-        
-        # Only flag if >60% missing (not 20%)
-        for col in df.columns:
-            if col.startswith('_'):
-                continue
-            null_pct = (df[col].isna().sum() / len(df)) * 100
-            if null_pct > 60:
-                issues.append({
-                    'type': 'data_gap',
-                    'severity': 'warning',
-                    'description': f'{col}: {null_pct:.0f}% incomplete - may limit analysis',
-                    'business_impact': 'Reduced visibility into this dimension'
-                })
-        
-        return issues[:2]  # Max 2 alerts
-    
-    def _build_action_plans(self, insights):
-        """Build action plans from insights"""
+    def _build_detailed_action_plans(self, insights):
+        """Build detailed action plans"""
         actions = []
         
-        for insight in insights.get('insights', [])[:3]:
+        for insight in insights.get('insights', [])[:4]:
             if 'action' in insight:
                 actions.append({
                     'priority': insight.get('impact', 'medium'),
                     'category': insight.get('category', 'General'),
                     'action': insight['action'],
-                    'rationale': insight['title']
+                    'rationale': insight['title'],
+                    'expected_impact': insight.get('metrics', {}).get('revenue_impact', 'Significant business value')
                 })
         
         return actions

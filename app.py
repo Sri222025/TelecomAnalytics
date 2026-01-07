@@ -191,6 +191,20 @@ elif page == "📤 Upload & Process":
     )
     
     if uploaded_files:
+        # Detect if files changed - clear old results
+        current_files = [f.name for f in uploaded_files]
+        if 'last_uploaded_files' not in st.session_state:
+            st.session_state.last_uploaded_files = []
+        
+        if current_files != st.session_state.last_uploaded_files:
+            # Files changed - clear ALL state
+            st.session_state.merged_data = None
+            st.session_state.ai_insights = None
+            st.session_state.ai_error = None
+            st.session_state.processed_files = []
+            st.session_state.relationships = []
+            st.session_state.last_uploaded_files = current_files
+        
         st.info(f"📁 **{len(uploaded_files)} file(s) selected:** {', '.join([f.name for f in uploaded_files])}")
         
         col1, col2 = st.columns([3, 1])

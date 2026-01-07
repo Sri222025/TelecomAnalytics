@@ -696,34 +696,8 @@ def _find_critical_issues(circle_analysis: Dict, metrics: Dict, stats: Dict = No
 
 
 def _generate_strategic_overview(circle_analysis: Dict, metrics: Dict) -> List[Dict]:
-    """Generate strategic overview when no specific patterns found"""
-    
-    insights = []
-    
-    # Analyze what we have
-    total_circles = len(circle_analysis)
-    circles_with_quality = sum(1 for d in circle_analysis.values() if any(m.get("category") == "quality" for m in d.get("metrics", {}).values()))
-    circles_with_volume = sum(1 for d in circle_analysis.values() if any(m.get("category") == "volume" for m in d.get("metrics", {}).values()))
-    
-    insights.append({
-        "title": f"Network Performance Dashboard: {total_circles} Circles Under Monitoring",
-        "description": (
-            f"**Network Coverage**: Comprehensive monitoring across {total_circles} operational circles. "
-            f"**Quality Metrics**: {circles_with_quality} circles with quality indicators tracked. "
-            f"**Volume Metrics**: {circles_with_volume} circles with traffic volume data. "
-            f"**Strategic Position**: Multi-circle presence enables market diversification and risk mitigation. "
-            f"**Recommendation**: Deep-dive analysis recommended to identify optimization opportunities and growth vectors."
-        ),
-        "impact": "medium",
-        "action": (
-            f"**Next Steps**: 1) Conduct circle-wise performance benchmarking. "
-            f"2) Identify top 3 and bottom 3 performers. "
-            f"3) Develop best-practice replication strategy. "
-            f"4) Allocate resources based on growth potential analysis."
-        )
-    })
-    
-    return insights
+    """Generate insights from actual data - no assumptions"""
+    return []  # Don't generate generic insights - let data-driven insights handle it
 
 
 def _generate_exec_summary(circle_analysis: Dict, problems: List[Dict], metrics: Dict, stats: Dict = None) -> str:
@@ -781,13 +755,179 @@ def _generate_exec_summary(circle_analysis: Dict, problems: List[Dict], metrics:
 
 
 def _generate_telecom_business_insights(df: pd.DataFrame, circle_analysis: Dict, metrics: Dict) -> List[Dict]:
-    """Generate board-level telecom business insights from actual data patterns"""
+    """Generate board-level product insights from ACTUAL data - Fixed Line + App Product"""
     
     insights = []
     
-    # 1. PENETRATION ANALYSIS - Key growth metric
-    penetration_cols = [c for c in df.columns if 'penetration' in c.lower() or 'penetrate' in c.lower()]
-    if penetration_cols:
+    # Get all column names for analysis
+    all_cols = [c for c in df.columns if not c.startswith('_')]
+    numeric_cols = [c for c in all_cols if pd.api.types.is_numeric_dtype(df[c])]
+    
+    # Analyze ACTUAL data columns - no assumptions
+    for col in all_cols:
+        if col.lower() in ['circle', 'region', 'zone', 'area']:
+            continue
+        
+        # Skip if already analyzed
+        if any(col in insight.get('title', '') for insight in insights):
+            continue
+        
+        # Analyze based on column name and actual values
+        if pd.api.types.is_numeric_dtype(df[col]):
+            values = df[col].dropna()
+            if len(values) > 0:
+                mean_val = values.mean()
+                min_val = values.min()
+                max_val = values.max()
+                std_val = values.std()
+                
+                # Product-specific insights based on column names
+                col_lower = col.lower()
+                
+                # Customer/Activation Analysis
+                if any(x in col_lower for x in ['customer', 'user', 'active', 'activated']):
+                    if 'penetration' in col_lower or 'rate' in col_lower or '%' in col:
+                        # This is a percentage metric
+                        insights.append({
+                            "title": f"Customer Activation Analysis: {col} Shows {mean_val:.1f}% Average",
+                            "description": (
+                                f"**Product Performance**: {col} averages **{mean_val:.1f}%** across all circles "
+                                f"(range: {min_val:.1f}% - {max_val:.1f}%). "
+                                f"**Variance**: {std_val:.1f}% standard deviation indicates {'high' if std_val > 5 else 'moderate' if std_val > 2 else 'low'} variability. "
+                                f"**Growth Opportunity**: Circles below {mean_val:.1f}% represent untapped market potential. "
+                                f"**Best Performer**: Top circle achieves {max_val:.1f}% - replication opportunity exists."
+                            ),
+                            "impact": "high" if std_val > 5 else "medium",
+                            "action": (
+                                f"**Strategy**: Analyze top-performing circle's activation strategy. "
+                                f"**Action**: Deploy similar approach to circles below {mean_val - std_val:.1f}%. "
+                                f"**Target**: Achieve {mean_val + 2:.1f}% average within 90 days. "
+                                f"**Expected Impact**: +{len(df) * (mean_val + 2 - mean_val) / 100):.0f} additional activations."
+                            )
+                        })
+                    else:
+                        # This is a count metric
+                        total = values.sum()
+                        insights.append({
+                            "title": f"Customer Base Analysis: {col} Totals {total:,.0f} Across Network",
+                            "description": (
+                                f"**Customer Metrics**: Total {col.lower()} = **{total:,.0f}** across all circles. "
+                                f"**Average per Circle**: {mean_val:,.0f} (range: {min_val:,.0f} - {max_val:,.0f}). "
+                                f"**Distribution**: Top 3 circles likely represent significant portion of customer base. "
+                                f"**Strategic Insight**: Focus growth efforts on underperforming circles to balance distribution."
+                            ),
+                            "impact": "medium",
+                            "action": (
+                                f"**Analysis**: Identify top 3 and bottom 3 circles by {col.lower()}. "
+                                f"**Strategy**: Replicate top performers' customer acquisition model. "
+                                f"**Target**: Increase bottom performers by 20% within 6 months."
+                            )
+                        })
+                
+                # Usage/Calling Analysis
+                elif any(x in col_lower for x in ['call', 'attempt', 'usage', 'mou', 'minute', 'duration']):
+                    if 'audio' in col_lower or 'video' in col_lower:
+                        # Call type analysis
+                        call_type = 'Video' if 'video' in col_lower else 'Audio'
+                        insights.append({
+                            "title": f"{call_type} Call Usage: {col} Shows {mean_val:,.0f} Average",
+                            "description": (
+                                f"**{call_type} Calling Pattern**: Average {col.lower()} = **{mean_val:,.0f}** per circle "
+                                f"(range: {min_val:,.0f} - {max_val:,.0f}). "
+                                f"**Product Usage**: This reflects mobile app usage of fixed line service. "
+                                f"**Engagement Level**: {'High' if mean_val > values.median() * 1.2 else 'Moderate' if mean_val > values.median() * 0.8 else 'Low'} engagement across network. "
+                                f"**Opportunity**: Circles below average represent upsell potential for {call_type.lower()} calling features."
+                            ),
+                            "impact": "medium",
+                            "action": (
+                                f"**Engagement Strategy**: Promote {call_type.lower()} calling features in low-usage circles. "
+                                f"**Marketing**: Target circles below {mean_val:,.0f} with app feature campaigns. "
+                                f"**Expected**: +{mean_val * 0.15:,.0f} usage increase in 60 days."
+                            )
+                        })
+                    else:
+                        # General usage
+                        total = values.sum()
+                        insights.append({
+                            "title": f"Product Usage Analysis: {col} Totals {total:,.0f}",
+                            "description": (
+                                f"**Usage Metrics**: Total {col.lower()} = **{total:,.0f}** across network. "
+                                f"**Per Circle Average**: {mean_val:,.0f} (range: {min_val:,.0f} - {max_val:,.0f}). "
+                                f"**Product Engagement**: This reflects customer usage of fixed line + mobile app product. "
+                                f"**Variance Analysis**: {std_val:,.0f} standard deviation shows {'significant' if std_val > mean_val * 0.3 else 'moderate'} circle-to-circle variation."
+                            ),
+                            "impact": "medium",
+                            "action": (
+                                f"**Optimization**: Analyze high-usage circles to identify success factors. "
+                                f"**Replication**: Apply learnings to low-usage circles. "
+                                f"**Target**: Increase network average by 15% within 90 days."
+                            )
+                        })
+                
+                # Segmentation Analysis
+                elif any(x in col_lower for x in ['non user', 'low', 'moderate', 'heavy', 'segment']):
+                    total = values.sum()
+                    segment_name = col.split('(')[1].split(')')[0] if '(' in col else col
+                    insights.append({
+                        "title": f"Customer Segmentation: {segment_name} Segment = {total:,.0f} Customers",
+                        "description": (
+                            f"**Segment Analysis**: {segment_name} segment represents **{total:,.0f} customers** network-wide. "
+                            f"**Per Circle**: Average {mean_val:,.0f} customers per circle (range: {min_val:,.0f} - {max_val:,.0f}). "
+                            f"**Strategic Value**: {'High-value' if 'heavy' in col_lower else 'Medium-value' if 'moderate' in col_lower else 'Low-value'} segment for revenue optimization. "
+                            f"**Upsell Opportunity**: {'Focus on retention and premium features' if 'heavy' in col_lower else 'Upsell to higher usage tiers' if 'moderate' in col_lower or 'low' in col_lower else 'Activation campaigns needed'}."
+                        ),
+                        "impact": "high" if 'heavy' in col_lower else "medium",
+                        "action": (
+                            f"**Segment Strategy**: {'Retain and upsell premium features' if 'heavy' in col_lower else 'Migrate to higher usage plans' if 'moderate' in col_lower or 'low' in col_lower else 'Activation campaigns'}. "
+                            f"**Target Circles**: Focus on circles with above-average {segment_name.lower()} concentration. "
+                            f"**Timeline**: 90-day campaign. **Expected**: {'Revenue retention' if 'heavy' in col_lower else '15-20% migration to higher tiers'}."
+                        )
+                    })
+                
+                # Percentage metrics (any column with % or rate)
+                elif '%' in col or 'rate' in col_lower or (0 <= mean_val <= 100 and max_val <= 100):
+                    insights.append({
+                        "title": f"Performance Metric: {col} at {mean_val:.1f}% Network Average",
+                        "description": (
+                            f"**Metric Analysis**: {col} averages **{mean_val:.1f}%** across all circles "
+                            f"(range: {min_val:.1f}% - {max_val:.1f}%). "
+                            f"**Performance Variance**: {std_val:.1f}% standard deviation. "
+                            f"**Top Performer**: Achieves {max_val:.1f}% - {max_val - mean_val:.1f} points above average. "
+                            f"**Improvement Opportunity**: Closing gap in underperformers could drive significant business impact."
+                        ),
+                        "impact": "high" if (max_val - min_val) > 10 else "medium",
+                        "action": (
+                            f"**Benchmarking**: Study top-performing circle's approach. "
+                            f"**Replication**: Deploy best practices to circles below {mean_val:.1f}%. "
+                            f"**Target**: Achieve {mean_val + 2:.1f}% network average within 120 days."
+                        )
+                    })
+    
+    # If no insights generated, analyze top numeric columns
+    if not insights and numeric_cols:
+        for col in numeric_cols[:3]:
+            values = df[col].dropna()
+            if len(values) > 0:
+                mean_val = values.mean()
+                total = values.sum()
+                
+                insights.append({
+                    "title": f"Data Analysis: {col} Shows {mean_val:,.0f} Average",
+                    "description": (
+                        f"**Metric Overview**: {col} averages **{mean_val:,.0f}** per circle "
+                        f"(total: {total:,.0f} network-wide). "
+                        f"**Data Range**: {values.min():,.0f} - {values.max():,.0f}. "
+                        f"**Analysis**: Review circle-wise performance to identify optimization opportunities."
+                    ),
+                    "impact": "medium",
+                    "action": (
+                        f"**Next Steps**: 1) Identify top 3 and bottom 3 circles by {col.lower()}. "
+                        f"2) Analyze factors driving performance differences. "
+                        f"3) Develop action plan for underperformers."
+                    )
+                })
+    
+    return insights
         penetration_col = penetration_cols[0]
         if penetration_col in df.columns:
             pen_data = []
@@ -858,8 +998,8 @@ def _generate_telecom_business_insights(df: pd.DataFrame, circle_analysis: Dict,
                     )
                 })
     
-    # 3. USAGE PATTERN ANALYSIS (MoU)
-    mou_cols = [c for c in df.columns if 'mou' in c.lower() or ('minute' in c.lower() and 'user' in c.lower())]
+    # 3. USAGE PATTERN ANALYSIS - Product usage (calling from mobile app)
+    mou_cols = [c for c in df.columns if 'mou' in c.lower() or ('minute' in c.lower() and ('user' in c.lower() or 'usage' in c.lower()))]
     if mou_cols:
         mou_col = mou_cols[0]
         if mou_col in df.columns:

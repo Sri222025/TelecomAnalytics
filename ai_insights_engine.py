@@ -52,6 +52,9 @@ def analyze_data(df: pd.DataFrame, merge_summary: Dict = None) -> Dict:
         print(f"  Total unique circles: {len(circle_analysis)}")
         if circle_analysis:
             print(f"  Circles found: {list(circle_analysis.keys())[:5]}")
+            # Check metrics per circle
+            for circle_name, data in list(circle_analysis.items())[:3]:
+                print(f"    {circle_name}: {len(data.get('metrics', {}))} metrics")
         
         # STEP 3.5: If no circles found OR very few circles, try alternative analysis
         if len(circle_analysis) == 0:
@@ -61,23 +64,36 @@ def analyze_data(df: pd.DataFrame, merge_summary: Dict = None) -> Dict:
                 return alternative_analysis
             return _generate_no_circles_found(df, circle_col)
         
-        # STEP 3.6: If circles found but few metrics, enhance analysis
-        if len(circle_analysis) > 0:
-            # Check if we have enough metrics
-            total_metrics = sum(len(data["metrics"]) for data in circle_analysis.values())
-            if total_metrics == 0:
-                # No metrics found - try to find any numeric columns
-                numeric_cols = [c for c in df_clean.columns if pd.api.types.is_numeric_dtype(df_clean[c]) and not c.startswith('_')]
-                if numeric_cols:
-                    # Re-analyze with all numeric columns as potential metrics
-                    enhanced_metrics = {
-                        "quality": [c for c in numeric_cols if df_clean[c].max() <= 100 and df_clean[c].min() >= 0],
-                        "volume": [c for c in numeric_cols if df_clean[c].max() > 1000],
-                        "usage": [c for c in numeric_cols if 10 <= df_clean[c].max() <= 1000],
-                        "efficiency": numeric_cols[:3]  # Take first 3 as efficiency
-                    }
-                    # Re-analyze circles with enhanced metrics
-                    circle_analysis = _analyze_circles(df_clean, circle_col, enhanced_metrics)
+        # STEP 3.6: Ensure we have data to analyze - if circles exist but no metrics, use all numeric columns
+        total_metrics = sum(len(data["metrics"]) for data in circle_analysis.values())
+        if total_metrics == 0 and len(circle_analysis) > 0:
+            print("  ⚠️ Circles found but no metrics - analyzing all numeric columns...")
+            # Find all numeric columns
+            numeric_cols = [c for c in df_clean.columns if pd.api.types.is_numeric_dtype(df_clean[c]) and not c.startswith('_') and c != circle_col]
+            if numeric_cols:
+                # Re-analyze with all numeric columns
+                for circle_name in circle_analysis.keys():
+                    circle_rows = df_clean[df_clean[circle_col] == circle_name]
+                    if len(circle_rows) > 0:
+                        row = circle_rows.iloc[0]
+                        for col in numeric_cols:
+                            if col in row.index and pd.notna(row[col]):
+                                try:
+                                    value = float(row[col])
+                                    # Infer category
+                                    if 0 <= value <= 100:
+                                        category = "quality"
+                                    elif value > 1000:
+                                        category = "volume"
+                                    else:
+                                        category = "usage"
+                                    
+                                    circle_analysis[circle_name]["metrics"][col] = {
+                                        "value": value,
+                                        "category": category
+                                    }
+                                except:
+                                    pass
         
         # STEP 4: Deep statistical analysis
         stats = _calculate_deep_statistics(df_clean, circle_analysis, metrics)
@@ -283,12 +299,30 @@ def _smart_clean_data(df: pd.DataFrame, circle_col: str) -> Tuple[pd.DataFrame, 
 
 
 def _analyze_circles(df: pd.DataFrame, circle_col: str, metrics: Dict) -> Dict:
-    """Analyze each circle - ENHANCED"""
+    """Analyze each circle - ENHANCED to work with any available data"""
     
     if not circle_col:
         return {}
     
     circle_analysis = {}
+    
+    # If no metrics found, use ALL numeric columns as potential metrics
+    if not any(metrics.values()):
+        print("  ⚠️ No metrics found by category, using all numeric columns...")
+        numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c]) and not c.startswith('_') and c != circle_col]
+        if numeric_cols:
+            # Categorize by value ranges
+            for col in numeric_cols:
+                sample = df[col].dropna().head(100)
+                if len(sample) > 0:
+                    mean_val = sample.mean()
+                    max_val = sample.max()
+                    if 0 <= mean_val <= 100 and max_val <= 100:
+                        metrics["quality"].append(col)
+                    elif mean_val > 1000:
+                        metrics["volume"].append(col)
+                    else:
+                        metrics["usage"].append(col)
     
     for idx, row in df.iterrows():
         circle_name = str(row[circle_col]).strip()
@@ -318,7 +352,7 @@ def _analyze_circles(df: pd.DataFrame, circle_col: str, metrics: Dict) -> Dict:
         
         circle_analysis[circle_name]["row_count"] += 1
         
-        # Extract all metrics
+        # Extract all metrics from defined categories
         for category, cols in metrics.items():
             for col in cols:
                 if col in row.index and pd.notna(row[col]):
@@ -341,9 +375,43 @@ def _analyze_circles(df: pd.DataFrame, circle_col: str, metrics: Dict) -> Dict:
                             }
                     except (ValueError, TypeError):
                         pass
+        
+        # ALSO extract ANY numeric columns not in metrics (fallback) - ALWAYS try this
+        # This ensures we get metrics even if category detection failed
+        for col in df.columns:
+            if col == circle_col or col.startswith('_'):
+                continue
+            if pd.api.types.is_numeric_dtype(df[col]) and col in row.index and pd.notna(row[col]):
+                # Skip if already in metrics
+                if col in circle_analysis[circle_name]["metrics"]:
+                    continue
+                try:
+                    value = float(row[col])
+                    # Infer category
+                    if 0 <= value <= 100:
+                        category = "quality"
+                    elif value > 1000:
+                        category = "volume"
+                    else:
+                        category = "usage"
+                    
+                    circle_analysis[circle_name]["metrics"][col] = {
+                        "value": value,
+                        "category": category
+                    }
+                except (ValueError, TypeError):
+                    pass
     
-    # Remove circles with no metrics
-    circle_analysis = {k: v for k, v in circle_analysis.items() if v["metrics"]}
+    # DON'T remove circles with no metrics - keep them for analysis
+    # Just mark them as having limited data
+    circles_with_metrics = 0
+    for circle_name, data in circle_analysis.items():
+        if not data["metrics"]:
+            data["limited_data"] = True
+        else:
+            circles_with_metrics += 1
+    
+    print(f"  Circles with metrics: {circles_with_metrics}/{len(circle_analysis)}")
     
     return circle_analysis
 
@@ -923,34 +991,70 @@ def _generate_recommendations(problems: List[Dict], stats: Dict = None) -> List[
 
 
 def _generate_no_circles_found(df: pd.DataFrame, circle_col: str) -> Dict:
-    """When no circles identified"""
+    """When no circles identified - try to analyze anyway"""
     
     sample_values = []
     if circle_col and circle_col in df.columns:
-        sample_values = df[circle_col].dropna().unique()[:5].tolist()
+        sample_values = df[circle_col].dropna().unique()[:10].tolist()
     
-    return {
-        "executive_summary": f"Analyzed {len(df)} records but could not identify individual circles for detailed analysis.",
-        "key_insights": [{
-            "title": "Data Structure Issue: No Valid Circles Found",
+    # Try one more time - analyze without strict filtering
+    insights = []
+    problems = []
+    
+    # Analyze all numeric columns
+    numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c]) and not c.startswith('_')]
+    
+    if numeric_cols:
+        for col in numeric_cols[:5]:  # Analyze top 5 numeric columns
+            values = df[col].dropna()
+            if len(values) > 0:
+                mean_val = values.mean()
+                min_val = values.min()
+                max_val = values.max()
+                
+                insights.append({
+                    "title": f"Network Analysis: {col} = {mean_val:.2f} (Range: {min_val:.2f} - {max_val:.2f})",
+                    "description": (
+                        f"**Data Summary**: Analyzed {len(values)} records. "
+                        f"**Statistics**: Mean = {mean_val:.2f}, Range = {min_val:.2f} to {max_val:.2f}. "
+                        f"**Circle Column**: '{circle_col}' found with values: {', '.join([str(v) for v in sample_values[:5]])}. "
+                        f"**Note**: Circle structure detected but requires data format adjustment for granular analysis."
+                    ),
+                    "impact": "medium",
+                    "action": (
+                        f"Review data format. Ensure each row represents one circle with consistent naming. "
+                        f"Remove summary rows (PAN INDIA, Total) before analysis."
+                    )
+                })
+    
+    if not insights:
+        insights.append({
+            "title": "Data Structure Issue: Circle Detection Challenge",
             "description": (
-                f"Circle column '{circle_col}' identified but no valid circle data after cleaning. "
-                f"Sample values: {sample_values}"
+                f"Circle column '{circle_col}' identified with sample values: {sample_values}. "
+                f"After cleaning, no individual circles could be extracted for detailed analysis. "
+                f"**Possible Causes**: All rows are summary rows, or circle names need standardization."
             ),
             "impact": "high",
             "action": "Verify data contains individual circle names (Mumbai, Delhi, etc.) not just summary rows."
-        }],
+        })
+    
+    return {
+        "executive_summary": f"Analyzed {len(df)} records. Circle column '{circle_col}' detected with values: {', '.join([str(v) for v in sample_values[:5]])}. Performing network-wide analysis on available data.",
+        "key_insights": insights,
         "recommendations": [{
             "category": "Data Quality",
             "priority": "high",
-            "action": "Provide Circle-Level Data",
+            "action": "Optimize Data Structure for Circle Analysis",
             "details": [
-                "Required: Individual circle names per row",
-                "Avoid: Only 'Total' or 'PAN INDIA' rows",
+                "Required: Individual circle names per row (e.g., 'DELHI', 'MUMBAI')",
+                "Remove: Summary rows like 'PAN INDIA', 'Total', 'All India'",
                 f"Current column: {circle_col}",
-                f"Sample values: {sample_values}"
+                f"Sample values found: {sample_values}",
+                "Action: Clean data to have one circle per row before upload"
             ]
-        }]
+        }],
+        "problems": problems
     }
 
 

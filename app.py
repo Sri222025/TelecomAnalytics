@@ -19,7 +19,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Enhanced Custom CSS for better UX
 st.markdown("""
 <style>
     .main-header {
@@ -27,38 +27,79 @@ st.markdown("""
         font-weight: bold;
         color: #1f77b4;
         text-align: center;
+        margin-bottom: 1rem;
+    }
+    .sub-header {
+        text-align: center;
+        color: #666;
         margin-bottom: 2rem;
     }
     .success-box {
         background-color: #d4edda;
-        border: 1px solid #c3e6cb;
+        border-left: 4px solid #28a745;
         border-radius: 5px;
-        padding: 1rem;
+        padding: 1.5rem;
         margin: 1rem 0;
     }
     .warning-box {
         background-color: #fff3cd;
-        border: 1px solid #ffc107;
+        border-left: 4px solid #ffc107;
         border-radius: 5px;
-        padding: 1rem;
+        padding: 1.5rem;
         margin: 1rem 0;
     }
     .critical-box {
         background-color: #f8d7da;
-        border: 1px solid #f5c6cb;
+        border-left: 4px solid #dc3545;
         border-radius: 5px;
-        padding: 1rem;
+        padding: 1.5rem;
         margin: 1rem 0;
     }
-    .metric-card {
+    .info-box {
+        background-color: #d1ecf1;
+        border-left: 4px solid #17a2b8;
+        border-radius: 5px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+    }
+    .step-box {
         background-color: #f8f9fa;
+        border: 2px solid #dee2e6;
         border-radius: 10px;
         padding: 1.5rem;
+        margin: 1rem 0;
+    }
+    .big-button {
+        padding: 1rem 2rem;
+        font-size: 1.2rem;
+        border-radius: 10px;
+    }
+    .metric-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 15px;
+        padding: 1.5rem;
         text-align: center;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .insight-card {
+        background: white;
+        border-left: 5px solid #1f77b4;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin: 1rem 0;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     .stProgress > div > div > div > div {
         background-color: #1f77b4;
+    }
+    h2 {
+        color: #1f77b4;
+        border-bottom: 3px solid #1f77b4;
+        padding-bottom: 0.5rem;
+    }
+    h3 {
+        color: #495057;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -78,162 +119,176 @@ if 'ai_error' not in st.session_state:
     st.session_state.ai_error = None
 if 'processing_log' not in st.session_state:
     st.session_state.processing_log = []
+if 'current_step' not in st.session_state:
+    st.session_state.current_step = 1
 
 # Initialize processors
 file_processor = FileProcessor()
 data_merger = DataMerger()
 
-# Check for API keys
-has_groq = 'GROQ_API_KEY' in st.secrets if hasattr(st, 'secrets') else False
-has_gemini = 'GEMINI_API_KEY' in st.secrets if hasattr(st, 'secrets') else False
-
 # Title
 st.markdown('<h1 class="main-header">📡 Telecom Analytics Platform</h1>', unsafe_allow_html=True)
-st.markdown("### AI-Powered Data Analysis for Telecom Operations")
+st.markdown('<p class="sub-header">Simple, Powerful Analytics for Telecom Data | Upload → Analyze → Get Insights</p>', unsafe_allow_html=True)
 
-# Sidebar
+# Sidebar - Simplified Navigation
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/000000/artificial-intelligence.png", width=80)
-    st.title("Navigation")
     
-    page = st.radio(
-        "Select Page",
-        ["🏠 Home", "📤 Upload & Process", "🤖 AI Insights", "🚨 Alerts & Anomalies", 
-         "📊 Data Explorer", "📈 Visualizations", "💾 Export"],
-        label_visibility="collapsed"
-    )
-    
-    st.markdown("---")
-    
-    # Status indicators
-    st.subheader("Status")
+    # Progress Indicator
     if st.session_state.merged_data is not None:
-        st.success("✅ Data Loaded")
-        st.metric("Records", f"{len(st.session_state.merged_data):,}")
-        
+        st.success("✅ **Step 2/3 Complete**")
         if st.session_state.ai_insights is not None:
-            st.success("✅ AI Analysis Done")
-            insights_count = len(st.session_state.ai_insights.get('key_insights', []))
-            if insights_count > 0:
-                st.metric("Insights", insights_count)
-        elif st.session_state.ai_error:
-            st.error("❌ AI Failed")
+            st.success("✅ **Step 3/3 Complete**")
+        st.progress(1.0 if st.session_state.ai_insights else 0.67)
     else:
-        st.info("⏳ No data loaded")
-    
-    if has_groq:
-        st.success("✅ AI Enabled (Groq)")
-    else:
-        st.warning("⚠️ AI Disabled")
+        st.info("📤 **Step 1/3: Upload Files**")
+        st.progress(0.33)
     
     st.markdown("---")
-    st.caption("Powered by Groq Llama 3.3 🚀")
-    st.caption("v6.0 - Enhanced Edition")
+    
+    # Simple Navigation
+    nav_options = {
+        "🏠 Start Here": "home",
+        "📤 Upload Data": "upload",
+        "📊 View Insights": "insights",
+        "📈 Charts": "charts",
+        "💾 Download Report": "export"
+    }
+    
+    selected = st.radio("**Navigate**", list(nav_options.keys()), label_visibility="collapsed")
+    page = nav_options[selected]
+    
+    st.markdown("---")
+    
+    # Quick Status
+    st.subheader("📊 Quick Status")
+    if st.session_state.merged_data is not None:
+        st.metric("Records", f"{len(st.session_state.merged_data):,}")
+        if st.session_state.ai_insights:
+            insights_count = len(st.session_state.ai_insights.get('key_insights', []))
+            st.metric("Insights", insights_count)
+    else:
+        st.info("👈 Upload files to begin")
+    
+    st.markdown("---")
+    st.caption("💡 **Tip**: Start with 'Upload Data' to analyze your files")
 
 # ============================================================================
-# HOME PAGE
+# HOME PAGE - Simplified Welcome
 # ============================================================================
-if page == "🏠 Home":
-    st.header("Welcome to Telecom Analytics Platform")
+if page == "home":
+    st.header("🎯 Welcome! Let's Get Started")
     
     col1, col2 = st.columns([2, 1])
     
     with col1:
         st.markdown("""
-        ### 🎯 What This Platform Does
+        ### 📋 How It Works (3 Simple Steps)
         
-        This AI-powered platform helps you:
-        - **📁 Process Multiple Files** - Upload 3-4 Excel/CSV files with multiple sheets
-        - **🔗 Auto-Merge Data** - Intelligent detection of relationships between files
-        - **🤖 AI Analysis** - Deep telecom insights powered by enhanced analytics engine
-        - **🚨 Anomaly Detection** - Business-critical issues identification
-        - **📊 Visual Analytics** - Interactive charts and dashboards
-        - **💡 Smart Recommendations** - Specific, actionable business plans
+        <div class="step-box">
+        <h4>📤 Step 1: Upload Your Files</h4>
+        <p>Upload your Excel or CSV files (3-4 files work best). The system automatically detects relationships between files.</p>
+        </div>
         
-        ### 🚀 Quick Start
-        1. Go to **📤 Upload & Process**
-        2. Upload your Excel/CSV files (3-4 files recommended)
-        3. Click **Process & Analyze**
-        4. Review **AI Insights** and **Alerts**
-        5. Explore visualizations and export results
+        <div class="step-box">
+        <h4>🤖 Step 2: AI Analysis</h4>
+        <p>Our AI engine analyzes your data, identifies patterns, and finds business opportunities. No configuration needed!</p>
+        </div>
         
-        ### ✨ New in V6
-        - Enhanced structure detection
-        - Improved problem identification
-        - Better data cleaning
-        - More robust error handling
-        """)
+        <div class="step-box">
+        <h4>📊 Step 3: Get Insights</h4>
+        <p>View board-ready insights, download reports, and share with management. All insights are ready for executive presentation.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Quick Actions
+        st.subheader("🚀 Quick Actions")
+        col_a, col_b, col_c = st.columns(3)
+        
+        with col_a:
+            if st.button("📤 Upload Files", type="primary", use_container_width=True):
+                st.session_state.current_step = 1
+                st.rerun()
+        
+        with col_b:
+            if st.session_state.merged_data:
+                if st.button("📊 View Insights", use_container_width=True):
+                    page = "insights"
+                    st.rerun()
+            else:
+                st.button("📊 View Insights", disabled=True, use_container_width=True)
+        
+        with col_c:
+            if st.session_state.ai_insights:
+                if st.button("💾 Download Report", use_container_width=True):
+                    page = "export"
+                    st.rerun()
+            else:
+                st.button("💾 Download Report", disabled=True, use_container_width=True)
     
     with col2:
         st.markdown("### 📊 Current Status")
         
         if st.session_state.merged_data is not None:
             st.markdown('<div class="success-box">', unsafe_allow_html=True)
-            st.success("✅ Data Ready")
+            st.success("✅ **Data Ready**")
             st.metric("Total Records", f"{len(st.session_state.merged_data):,}")
             st.metric("Columns", len(st.session_state.merged_data.columns))
-            st.metric("Files Processed", len(st.session_state.processed_files))
             
             if st.session_state.ai_insights:
+                st.success("✅ **Analysis Complete**")
                 insights = st.session_state.ai_insights
-                st.metric("AI Insights", len(insights.get('key_insights', [])))
+                st.metric("Key Insights", len(insights.get('key_insights', [])))
                 problems = insights.get('problems', [])
                 if problems:
                     critical = len([p for p in problems if p.get('severity') == 'critical'])
                     if critical > 0:
                         st.error(f"🔴 {critical} Critical Issues")
             elif st.session_state.ai_error:
-                st.error(f"AI Error: {st.session_state.ai_error[:50]}...")
+                st.error("❌ Analysis Failed")
             
             st.markdown('</div>', unsafe_allow_html=True)
             
-            if st.button("🔄 Process New Files", type="primary"):
-                st.session_state.processed_files = []
-                st.session_state.merged_data = None
-                st.session_state.merge_summary = None
-                st.session_state.ai_insights = None
-                st.session_state.ai_error = None
-                st.session_state.relationships = []
+            if st.button("🔄 Start Fresh", type="secondary"):
+                for key in list(st.session_state.keys()):
+                    del st.session_state[key]
                 st.rerun()
         else:
-            st.info("👈 Upload files to get started")
+            st.markdown('<div class="info-box">', unsafe_allow_html=True)
+            st.info("**Ready to Start**")
+            st.write("Upload your telecom data files to begin analysis.")
+            st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================================
-# UPLOAD & PROCESS PAGE
+# UPLOAD PAGE - Simplified
 # ============================================================================
-elif page == "📤 Upload & Process":
-    st.header("📤 Upload and Process Files")
+elif page == "upload":
+    st.header("📤 Upload Your Data Files")
+    
+    st.info("💡 **Tip**: Upload 3-4 Excel or CSV files. The system will automatically merge and analyze them.")
     
     uploaded_files = st.file_uploader(
-        "Upload your Excel or CSV files (3-4 files recommended)",
+        "**Choose your files**",
         type=['xlsx', 'xls', 'csv'],
         accept_multiple_files=True,
-        help="Upload multiple files. The system will auto-detect relationships."
+        help="Select multiple files. Supported formats: Excel (.xlsx, .xls) and CSV (.csv)"
     )
     
     if uploaded_files:
-        # Detect if files changed - clear old results
-        current_files = [f.name for f in uploaded_files]
-        if 'last_uploaded_files' not in st.session_state:
-            st.session_state.last_uploaded_files = []
+        st.success(f"✅ **{len(uploaded_files)} file(s) selected**")
         
-        if current_files != st.session_state.last_uploaded_files:
-            # Files changed - clear ALL state
-            st.session_state.merged_data = None
-            st.session_state.ai_insights = None
-            st.session_state.ai_error = None
-            st.session_state.processed_files = []
-            st.session_state.relationships = []
-            st.session_state.last_uploaded_files = current_files
+        # Show file list
+        with st.expander("📋 View Selected Files"):
+            for f in uploaded_files:
+                st.write(f"• {f.name} ({f.size:,} bytes)")
         
-        st.info(f"📁 **{len(uploaded_files)} file(s) selected:** {', '.join([f.name for f in uploaded_files])}")
-        
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            if st.button("🚀 Process & Analyze", type="primary", use_container_width=True):
-                
-                # CLEAR ALL OLD STATE
+        # Single Big Button
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("🚀 **ANALYZE MY DATA**", type="primary", use_container_width=True):
+                # Clear old state
                 st.session_state.merged_data = None
                 st.session_state.ai_insights = None
                 st.session_state.ai_error = None
@@ -241,23 +296,22 @@ elif page == "📤 Upload & Process":
                 st.session_state.relationships = []
                 st.session_state.processing_log = []
                 
-                with st.spinner("🔄 Processing files..."):
+                with st.spinner("🔄 Processing your files..."):
                     try:
-                        # Process each file
+                        # Process files
                         processed_files = []
                         progress_bar = st.progress(0)
                         status_text = st.empty()
                         
                         for idx, file in enumerate(uploaded_files):
-                            status_text.text(f"Processing: {file.name}")
+                            status_text.text(f"📄 Processing: {file.name}")
                             try:
                                 file_info = file_processor.process_file(file)
                                 processed_files.append(file_info)
-                                st.session_state.processing_log.append(f"✅ Processed {file.name}: {file_info.get('total_rows', 0)} rows")
+                                st.session_state.processing_log.append(f"✅ {file.name}: {file_info.get('total_rows', 0)} rows")
                             except Exception as e:
-                                error_msg = f"❌ Error processing {file.name}: {str(e)}"
-                                st.session_state.processing_log.append(error_msg)
-                                st.warning(error_msg)
+                                st.session_state.processing_log.append(f"❌ {file.name}: Error - {str(e)}")
+                                st.warning(f"⚠️ Error processing {file.name}: {str(e)}")
                             
                             progress_bar.progress((idx + 1) / len(uploaded_files))
                         
@@ -266,17 +320,11 @@ elif page == "📤 Upload & Process":
                             st.stop()
                         
                         st.session_state.processed_files = processed_files
-                        status_text.text("🔍 Detecting relationships...")
+                        status_text.text("🔍 Finding relationships...")
                         
                         # Detect relationships
                         relationships = data_merger.detect_relationships(processed_files)
                         st.session_state.relationships = relationships
-                        
-                        if relationships:
-                            st.info(f"✅ Found {len(relationships)} potential relationship(s)")
-                            with st.expander("View Relationships"):
-                                for rel in relationships[:5]:
-                                    st.write(f"- {rel['file1']} ↔ {rel['file2']} via '{rel['key_column']}' ({rel['match_rate']:.1f}% match)")
                         
                         # Merge data
                         status_text.text("🔗 Merging data...")
@@ -289,134 +337,103 @@ elif page == "📤 Upload & Process":
                         st.session_state.merged_data = merged_data
                         st.session_state.merge_summary = merge_summary
                         
-                        st.success(f"✅ Data merged: {len(merged_data):,} records")
+                        st.success(f"✅ **Data merged successfully!** {len(merged_data):,} records")
                         
-                        # AI Analysis with ACTUAL DATA
+                        # AI Analysis
                         status_text.text("🤖 Running AI analysis...")
                         try:
                             insights = ai_insights_engine.analyze_data(merged_data, merge_summary)
                             st.session_state.ai_insights = insights
                             
-                            # Show quick summary
                             if insights.get('problems'):
                                 problems = insights['problems']
                                 critical = len([p for p in problems if p.get('severity') == 'critical'])
                                 if critical > 0:
-                                    st.error(f"🚨 Found {critical} critical issue(s)!")
+                                    st.error(f"🚨 **{critical} critical issue(s) found!**")
                                 else:
-                                    st.success(f"✅ Analysis complete: {len(problems)} issue(s) identified")
+                                    st.success(f"✅ **Analysis complete!** {len(problems)} issue(s) identified")
                             else:
-                                st.success("✅ AI analysis complete!")
+                                st.success("✅ **Analysis complete!**")
                                 
                         except Exception as e:
-                            error_msg = f"{str(e)}\n\nFull traceback:\n{traceback.format_exc()}"
+                            error_msg = f"{str(e)}\n\n{traceback.format_exc()}"
                             st.session_state.ai_error = error_msg
                             st.error(f"⚠️ AI analysis failed: {str(e)}")
                             with st.expander("🔍 Error Details"):
                                 st.code(error_msg)
-                            st.info("💡 You can still use other features (Data Explorer, Visualizations, Export)")
                         
                         progress_bar.progress(1.0)
-                        status_text.text("✅ Processing complete!")
-                        st.success("✅ Processing complete!")
+                        status_text.text("✅ Complete!")
+                        st.success("🎉 **Processing complete!**")
                         st.balloons()
+                        
+                        # Auto-navigate to insights
+                        st.info("👉 **Go to 'View Insights' to see your analysis results**")
                         
                     except Exception as e:
                         st.error(f"❌ Error: {str(e)}")
                         with st.expander("🔍 Full Error Details"):
                             st.code(traceback.format_exc())
-        
-        with col2:
-            if st.button("Clear All", type="secondary"):
-                st.session_state.processed_files = []
-                st.session_state.merged_data = None
-                st.session_state.ai_insights = None
-                st.session_state.ai_error = None
-                st.session_state.relationships = []
-                st.rerun()
-        
-        # Show processing log
-        if st.session_state.processing_log:
-            with st.expander("📋 Processing Log"):
-                for log_entry in st.session_state.processing_log:
-                    st.text(log_entry)
     
-    # Show results
+    # Show summary if data exists
     if st.session_state.merged_data is not None:
         st.markdown("---")
         st.subheader("✅ Processing Summary")
         
         summary = st.session_state.merge_summary
-        
-        # Summary metrics
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Files Processed", summary.get('files_processed', 0))
-        col2.metric("Total Records", f"{summary.get('total_records', 0):,}")
+        col1.metric("Files", summary.get('files_processed', 0))
+        col2.metric("Records", f"{summary.get('total_records', 0):,}")
         col3.metric("Columns", summary.get('columns', 0))
-        col4.metric("Method", summary.get('method', 'unknown').title())
-        
-        # Merge details
-        with st.expander("📋 Merge Details", expanded=True):
-            if summary.get('method') == 'merge':
-                st.success(f"✅ Files connected via: **{summary.get('merge_key')}**")
-                st.info(f"Match rate: {summary.get('match_rate', 'N/A')}")
-            else:
-                st.info(summary.get('note', 'Data concatenated'))
-        
-        # Data preview
-        with st.expander("👀 Data Preview"):
-            st.dataframe(st.session_state.merged_data.head(20), use_container_width=True)
+        col4.metric("Method", summary.get('method', 'N/A').title())
 
 # ============================================================================
-# AI INSIGHTS PAGE
+# INSIGHTS PAGE - Board-Ready Format
 # ============================================================================
-elif page == "🤖 AI Insights":
-    st.header("🤖 AI-Powered Insights")
+elif page == "insights":
+    st.header("📊 AI-Powered Insights")
     
     if st.session_state.merged_data is None:
-        st.warning("⚠️ Please upload and process files first")
+        st.warning("⚠️ **No data loaded.** Please upload files first.")
+        if st.button("📤 Go to Upload Page"):
+            page = "upload"
+            st.rerun()
     elif st.session_state.ai_insights is None:
         if st.session_state.ai_error:
-            st.error("❌ AI analysis failed during processing")
-            with st.expander("🔍 View Error Details"):
+            st.error("❌ **Analysis failed.** Please try processing again.")
+            with st.expander("🔍 Error Details"):
                 st.code(st.session_state.ai_error)
-            st.info("💡 Try processing files again or check your data format")
         else:
-            st.info("⏳ AI analysis not yet run. Go to Upload & Process page and click 'Process & Analyze'")
+            st.info("⏳ **Analysis not run yet.** Go to Upload page and click 'Analyze My Data'.")
     else:
         insights = st.session_state.ai_insights
         
-        # Executive Summary
+        # Executive Summary - Prominent
+        st.markdown("---")
         st.subheader("📝 Executive Summary")
         summary = insights.get("executive_summary", "No summary available")
         st.markdown(f'<div class="success-box">{summary}</div>', unsafe_allow_html=True)
         
-        # Problems Overview
+        # Problems Overview - Visual
         problems = insights.get('problems', [])
         if problems:
             st.markdown("---")
-            st.subheader("🚨 Issues Overview")
+            st.subheader("🚨 Critical Issues Overview")
             
             col1, col2, col3, col4 = st.columns(4)
             critical = len([p for p in problems if p.get('severity') == 'critical'])
             high = len([p for p in problems if p.get('severity') == 'high'])
             medium = len([p for p in problems if p.get('severity') == 'medium'])
             
-            col1.metric("🔴 Critical", critical)
-            col2.metric("🟠 High", high)
-            col3.metric("🟡 Medium", medium)
-            col4.metric("Total Issues", len(problems))
-            
-            # Show top problems
-            with st.expander("📋 All Issues", expanded=False):
-                for idx, problem in enumerate(problems, 1):
-                    severity = problem.get('severity', 'medium')
-                    icon = "🔴" if severity == 'critical' else "🟠" if severity == 'high' else "🟡"
-                    st.markdown(f"**{idx}. {icon} {problem.get('circle', 'Unknown')}** - {problem.get('metric', 'N/A')}: {problem.get('value', 'N/A')}")
+            col1.metric("🔴 Critical", critical, delta=None)
+            col2.metric("🟠 High", high, delta=None)
+            col3.metric("🟡 Medium", medium, delta=None)
+            col4.metric("Total", len(problems), delta=None)
         
-        # Key Insights
+        # Key Insights - Board-Ready Format
         st.markdown("---")
-        st.subheader("💡 Key Insights")
+        st.subheader("💡 Key Business Insights")
+        st.caption("💼 **Board-Ready Insights** - Ready to share with management")
         
         key_insights = insights.get('key_insights', [])
         if key_insights:
@@ -424,187 +441,61 @@ elif page == "🤖 AI Insights":
                 impact = insight.get('impact', 'medium')
                 icon = "🔴" if impact == 'critical' else "🟠" if impact == 'high' else "🟡" if impact == 'medium' else "🟢"
                 
-                with st.expander(f"{icon} Insight {idx}: {insight.get('title', 'N/A')}", expanded=(idx <= 2)):
-                    st.write(insight.get('description', ''))
+                with st.expander(f"{icon} **Insight {idx}**: {insight.get('title', 'N/A')}", expanded=(idx <= 2)):
+                    st.markdown(f'<div class="insight-card">', unsafe_allow_html=True)
+                    st.markdown(insight.get('description', ''))
                     
-                    # Show metrics if available
-                    if 'metrics' in insight:
-                        metrics = insight['metrics']
-                        col1, col2, col3 = st.columns(3)
-                        if 'key_number' in metrics:
-                            col1.metric("Key Metric", metrics['key_number'])
-                        if 'percentage' in metrics:
-                            col2.metric("Percentage", metrics['percentage'])
-                        if 'comparison' in metrics:
-                            col3.metric("Comparison", metrics['comparison'])
-                    
-                    # Show action if available
                     if 'action' in insight and insight['action']:
-                        st.markdown(f"**🎯 Recommended Action:**")
+                        st.markdown("---")
+                        st.markdown("**🎯 Recommended Action:**")
                         st.info(insight['action'])
                     
-                    st.caption(f"Impact: {impact.upper()} | Category: {insight.get('category', 'general')}")
+                    st.caption(f"**Impact Level**: {impact.upper()}")
+                    st.markdown('</div>', unsafe_allow_html=True)
         else:
-            st.info("No specific insights generated")
+            st.info("No specific insights generated. Review the executive summary above.")
         
         # Recommendations
-        st.markdown("---")
-        st.subheader("🎯 Action Plan")
-        
         recommendations = insights.get('recommendations', [])
         if recommendations:
+            st.markdown("---")
+            st.subheader("🎯 Action Plan & Recommendations")
+            
             for idx, rec in enumerate(recommendations, 1):
                 priority = rec.get('priority', 'medium')
-                color = 'critical-box' if priority == 'critical' else 'warning-box' if priority == 'high' else 'success-box'
+                color = 'critical-box' if priority == 'critical' else 'warning-box' if priority == 'high' else 'info-box'
                 
                 st.markdown(f'<div class="{color}">', unsafe_allow_html=True)
                 st.markdown(f"**{idx}. {rec.get('category', 'General')}** (Priority: {priority.upper()})")
-                st.write(rec.get('action', ''))
-                
-                if 'rationale' in rec:
-                    st.caption(f"Rationale: {rec['rationale']}")
+                st.markdown(f"**Action**: {rec.get('action', '')}")
                 
                 if isinstance(rec.get('details'), list):
+                    st.markdown("**Details:**")
                     for detail in rec['details']:
-                        st.write(f"- {detail}")
+                        st.write(f"• {detail}")
                 elif rec.get('details'):
                     st.write(rec['details'])
                 
-                if 'expected_impact' in rec:
-                    st.caption(f"💰 Expected Impact: {rec['expected_impact']}")
-                
                 st.markdown('</div>', unsafe_allow_html=True)
-        else:
-            st.info("No recommendations generated")
 
 # ============================================================================
-# ALERTS & ANOMALIES PAGE  
+# CHARTS PAGE - Simplified
 # ============================================================================
-elif page == "🚨 Alerts & Anomalies":
-    st.header("🚨 Alerts & Anomalies")
+elif page == "charts":
+    st.header("📈 Data Visualizations")
     
     if st.session_state.merged_data is None:
-        st.warning("⚠️ Please upload and process files first")
-    elif st.session_state.ai_insights is None:
-        st.info("⏳ Run AI analysis first")
-    else:
-        problems = st.session_state.ai_insights.get('problems', [])
-        
-        if not problems:
-            st.success("✅ No critical anomalies detected! Data quality looks good.")
-        else:
-            # Summary
-            critical = len([a for a in problems if a.get('severity') == 'critical'])
-            high = len([a for a in problems if a.get('severity') == 'high'])
-            medium = len([a for a in problems if a.get('severity') == 'medium'])
-            
-            col1, col2, col3 = st.columns(3)
-            col1.metric("🔴 Critical", critical)
-            col2.metric("🟠 High", high)
-            col3.metric("🟡 Medium", medium)
-            
-            st.markdown("---")
-            
-            # Display anomalies grouped by severity
-            for severity in ['critical', 'high', 'medium']:
-                severity_problems = [p for p in problems if p.get('severity') == severity]
-                if severity_problems:
-                    st.subheader(f"{'🔴' if severity == 'critical' else '🟠' if severity == 'high' else '🟡'} {severity.upper()} Issues")
-                    
-                    for problem in severity_problems:
-                        box_class = 'critical-box' if severity == 'critical' else 'warning-box' if severity == 'medium' else 'warning-box'
-                        
-                        st.markdown(f'<div class="{box_class}">', unsafe_allow_html=True)
-                        st.markdown(f"### {problem.get('circle', 'Unknown Circle')}")
-                        st.write(f"**Type:** {problem.get('type', 'Unknown').title()}")
-                        st.write(f"**Metric:** {problem.get('metric', 'N/A')}")
-                        st.write(f"**Value:** {problem.get('value', 'N/A')}")
-                        
-                        if problem.get('gap'):
-                            st.write(f"**Gap:** {problem['gap']:.2f} points")
-                        if problem.get('calls_affected'):
-                            st.write(f"**Calls Affected:** {problem['calls_affected']:,} daily")
-                        if problem.get('revenue_loss'):
-                            st.write(f"**Revenue Risk:** ₹{problem['revenue_loss']:.1f}L monthly")
-                        if problem.get('overload_pct'):
-                            st.write(f"**Overload:** {problem['overload_pct']:.1f}% above average")
-                        
-                        st.markdown('</div>', unsafe_allow_html=True)
-
-# ============================================================================
-# DATA EXPLORER PAGE
-# ============================================================================
-elif page == "📊 Data Explorer":
-    st.header("📊 Data Explorer")
-    
-    if st.session_state.merged_data is None:
-        st.warning("⚠️ Please upload and process files first")
+        st.warning("⚠️ **No data loaded.** Please upload files first.")
     else:
         df = st.session_state.merged_data
         
-        # Quick stats
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Records", f"{len(df):,}")
-        col2.metric("Columns", len(df.columns))
-        col3.metric("Memory", f"{df.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
-        col4.metric("Completeness", f"{(df.notna().sum().sum() / (len(df) * len(df.columns)) * 100):.1f}%")
-        
-        st.markdown("---")
-        
-        # Column selector
-        all_cols = [col for col in df.columns if not col.startswith('_')]
-        
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            selected_cols = st.multiselect(
-                "Select columns to display",
-                all_cols,
-                default=all_cols[:10] if len(all_cols) > 10 else all_cols
-            )
-        
-        with col2:
-            rows_to_show = st.number_input("Rows to display", 10, 1000, 100)
-        
-        # Display data
-        if selected_cols:
-            st.dataframe(df[selected_cols].head(rows_to_show), use_container_width=True)
-        
-        # Column statistics
-        with st.expander("📊 Column Statistics"):
-            col_info = []
-            for col in all_cols:
-                col_info.append({
-                    'Column': col,
-                    'Type': str(df[col].dtype),
-                    'Non-Null': df[col].notna().sum(),
-                    'Null': df[col].isna().sum(),
-                    'Unique': df[col].nunique()
-                })
-            st.dataframe(pd.DataFrame(col_info), use_container_width=True)
-
-# ============================================================================
-# VISUALIZATIONS PAGE
-# ============================================================================
-elif page == "📈 Visualizations":
-    st.header("📈 Visualizations")
-    
-    if st.session_state.merged_data is None:
-        st.warning("⚠️ Please upload and process files first")
-    else:
-        df = st.session_state.merged_data
-        
-        # Get numeric and categorical columns
         numeric_cols = [c for c in df.select_dtypes(include=['number']).columns if not c.startswith('_')]
         categorical_cols = [c for c in df.select_dtypes(include=['object']).columns if not c.startswith('_')]
         
         if not numeric_cols and not categorical_cols:
-            st.info("No suitable columns for visualization. Upload data with numeric or categorical columns.")
+            st.info("No suitable columns for visualization.")
         else:
-            # Chart type selector
-            chart_type = st.selectbox(
-                "Select Chart Type",
-                ["Bar Chart", "Line Chart", "Pie Chart", "Histogram", "Scatter Plot"]
-            )
+            chart_type = st.selectbox("**Select Chart Type**", ["Bar Chart", "Pie Chart", "Line Chart", "Histogram"])
             
             try:
                 if chart_type == "Bar Chart" and categorical_cols and numeric_cols:
@@ -624,8 +515,7 @@ elif page == "📈 Visualizations":
                     cat_col = st.selectbox("Category", categorical_cols)
                     if cat_col:
                         chart_data = df[cat_col].value_counts().head(10)
-                        fig = px.pie(values=chart_data.values, names=chart_data.index, 
-                                    title=f"Distribution of {cat_col}")
+                        fig = px.pie(values=chart_data.values, names=chart_data.index, title=f"Distribution of {cat_col}")
                         st.plotly_chart(fig, use_container_width=True)
                 
                 elif chart_type == "Histogram" and numeric_cols:
@@ -634,41 +524,17 @@ elif page == "📈 Visualizations":
                         fig = px.histogram(df, x=num_col, title=f"Distribution of {num_col}")
                         st.plotly_chart(fig, use_container_width=True)
                 
-                elif chart_type == "Line Chart":
-                    col1, col2 = st.columns(2)
-                    all_cols = [c for c in df.columns if not c.startswith('_')]
-                    with col1:
-                        x_col = st.selectbox("X-axis", all_cols)
-                    with col2:
-                        y_col = st.selectbox("Y-axis", numeric_cols) if numeric_cols else None
-                    
-                    if x_col and y_col:
-                        fig = px.line(df.head(100), x=x_col, y=y_col, title=f"{y_col} over {x_col}")
-                        st.plotly_chart(fig, use_container_width=True)
-                
-                elif chart_type == "Scatter Plot" and numeric_cols:
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        x_col = st.selectbox("X-axis", numeric_cols)
-                    with col2:
-                        y_col = st.selectbox("Y-axis", numeric_cols)
-                    
-                    if x_col and y_col:
-                        fig = px.scatter(df.head(500), x=x_col, y=y_col, title=f"{y_col} vs {x_col}")
-                        st.plotly_chart(fig, use_container_width=True)
-                
             except Exception as e:
-                st.error(f"Error creating visualization: {str(e)}")
-                st.info("Try selecting different columns or chart type")
+                st.error(f"Error creating chart: {str(e)}")
 
 # ============================================================================
-# EXPORT PAGE
+# EXPORT PAGE - Simplified
 # ============================================================================
-elif page == "💾 Export":
-    st.header("💾 Export Data")
+elif page == "export":
+    st.header("💾 Download Reports")
     
     if st.session_state.merged_data is None:
-        st.warning("⚠️ Please upload and process files first")
+        st.warning("⚠️ **No data loaded.** Please upload and analyze files first.")
     else:
         df = st.session_state.merged_data
         
@@ -677,10 +543,9 @@ elif page == "💾 Export":
         col1, col2 = st.columns(2)
         
         with col1:
-            # CSV Export
             csv = df.to_csv(index=False)
             st.download_button(
-                label="📄 Download as CSV",
+                label="📄 Download Data as CSV",
                 data=csv,
                 file_name=f"telecom_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv",
@@ -688,42 +553,41 @@ elif page == "💾 Export":
             )
         
         with col2:
-            # Excel Export
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 df.to_excel(writer, index=False, sheet_name='Data')
             
             st.download_button(
-                label="📊 Download as Excel",
+                label="📊 Download Data as Excel",
                 data=buffer.getvalue(),
                 file_name=f"telecom_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
         
-        # Export insights
+        # Export insights report
         if st.session_state.ai_insights:
             st.markdown("---")
-            st.subheader("📋 Export AI Insights")
+            st.subheader("📋 Download Insights Report")
             
             insights = st.session_state.ai_insights
             insights_text = f"""
-# AI Insights Report
+# Telecom Analytics - Executive Insights Report
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 ## Executive Summary
 {insights.get('executive_summary', 'N/A')}
 
-## Key Insights
+## Key Business Insights
 """
             for idx, insight in enumerate(insights.get('key_insights', []), 1):
                 insights_text += f"\n### {idx}. {insight.get('title', 'N/A')}\n"
                 insights_text += f"{insight.get('description', '')}\n"
                 if 'action' in insight:
-                    insights_text += f"**Action:** {insight['action']}\n"
+                    insights_text += f"\n**Recommended Action:** {insight['action']}\n"
                 insights_text += f"**Impact:** {insight.get('impact', 'N/A')}\n"
             
-            insights_text += "\n## Recommendations\n"
+            insights_text += "\n## Action Plan & Recommendations\n"
             for idx, rec in enumerate(insights.get('recommendations', []), 1):
                 insights_text += f"\n### {idx}. {rec.get('category', 'General')}\n"
                 insights_text += f"**Priority:** {rec.get('priority', 'medium')}\n"
@@ -733,9 +597,11 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                         insights_text += f"- {detail}\n"
             
             st.download_button(
-                label="📝 Download Insights Report",
+                label="📝 Download Insights Report (Board-Ready)",
                 data=insights_text,
-                file_name=f"ai_insights_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                mime="text/plain"
+                file_name=f"telecom_insights_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                mime="text/plain",
+                use_container_width=True
             )
-
+            
+            st.success("✅ **Report ready for executive presentation!**")

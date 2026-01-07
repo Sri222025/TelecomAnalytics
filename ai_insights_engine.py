@@ -1101,6 +1101,37 @@ def _generate_problem_insights(circle_analysis: Dict, problems: List[Dict], metr
     return insights
 
 
+def _generate_strategic_overview(circle_analysis: Dict, metrics: Dict) -> List[Dict]:
+    """Generate strategic overview when no specific patterns found"""
+    
+    insights = []
+    
+    # Analyze what we have
+    total_circles = len(circle_analysis)
+    circles_with_quality = sum(1 for d in circle_analysis.values() if any(m.get("category") == "quality" for m in d.get("metrics", {}).values()))
+    circles_with_volume = sum(1 for d in circle_analysis.values() if any(m.get("category") == "volume" for m in d.get("metrics", {}).values()))
+    
+    insights.append({
+        "title": f"Network Performance Dashboard: {total_circles} Circles Under Monitoring",
+        "description": (
+            f"**Network Coverage**: Comprehensive monitoring across {total_circles} operational circles. "
+            f"**Quality Metrics**: {circles_with_quality} circles with quality indicators tracked. "
+            f"**Volume Metrics**: {circles_with_volume} circles with traffic volume data. "
+            f"**Strategic Position**: Multi-circle presence enables market diversification and risk mitigation. "
+            f"**Recommendation**: Deep-dive analysis recommended to identify optimization opportunities and growth vectors."
+        ),
+        "impact": "medium",
+        "action": (
+            f"**Next Steps**: 1) Conduct circle-wise performance benchmarking. "
+            f"2) Identify top 3 and bottom 3 performers. "
+            f"3) Develop best-practice replication strategy. "
+            f"4) Allocate resources based on growth potential analysis."
+        )
+    })
+    
+    return insights
+
+
 def _generate_generic_insight(circle_count: int) -> Dict:
     """Fallback insight"""
     return {

@@ -9,7 +9,7 @@ import traceback
 # Import our custom modules
 from file_processor import FileProcessor
 from data_merger import DataMerger
-import ai_insights_bulletproof as ai_insights_engine
+import ai_insights_engine
 
 # Must be FIRST Streamlit command
 st.set_page_config(

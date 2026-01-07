@@ -1,110 +1,204 @@
+"""
+Smart File Processor with Column Type Detection
+Handles multi-sheet Excel files and intelligent data typing
+"""
 import pandas as pd
+import numpy as np
+from datetime import datetime
 import io
-from typing import List, Dict, Any
-import streamlit as st
 
 class FileProcessor:
-    """Process uploaded files and extract data from all worksheets"""
-    
     def __init__(self):
-        self.supported_formats = ['xlsx', 'xls', 'csv']
-    
-    def process_files(self, uploaded_files: List) -> List[Dict[str, Any]]:
-        """
-        Process multiple uploaded files
-        Returns: List of file information dictionaries
-        """
-        processed_data = []
+        self.supported_formats = ['.xlsx', '.xls', '.csv']
         
-        for file in uploaded_files:
-            try:
-                file_info = {
-                    'filename': file.name,
-                    'file_type': file.name.split('.')[-1],
-                    'sheets': {}
-                }
-                
-                # Read based on file type
-                if file.name.endswith('.csv'):
-                    # CSV files have only one sheet
-                    df = pd.read_csv(file)
-                    sheet_name = 'Sheet1'
-                    file_info['sheets'][sheet_name] = self._process_dataframe(df, sheet_name)
-                
-                elif file.name.endswith(('.xlsx', '.xls')):
-                    # Excel files can have multiple sheets
-                    excel_file = pd.ExcelFile(file)
-                    
-                    for sheet_name in excel_file.sheet_names:
-                        df = pd.read_excel(excel_file, sheet_name=sheet_name)
-                        file_info['sheets'][sheet_name] = self._process_dataframe(df, sheet_name)
-                
-                processed_data.append(file_info)
-                
-            except Exception as e:
-                st.error(f"Error processing {file.name}: {str(e)}")
-                continue
+    def process_file(self, uploaded_file):
+        """
+        Process uploaded file and return structured data with metadata
+        """
+        file_name = uploaded_file.name
+        file_extension = file_name[file_name.rfind('.'):]
         
-        return processed_data
+        if file_extension not in self.supported_formats:
+            raise ValueError(f"Unsupported file format: {file_extension}")
+        
+        # Process based on file type
+        if file_extension == '.csv':
+            return self._process_csv(uploaded_file, file_name)
+        else:
+            return self._process_excel(uploaded_file, file_name)
     
-    def _process_dataframe(self, df: pd.DataFrame, sheet_name: str) -> Dict[str, Any]:
-        """
-        Process individual dataframe and extract metadata
-        """
-        # Clean column names (remove extra spaces, etc.)
+    def _process_csv(self, file, file_name):
+        """Process CSV file"""
+        df = pd.read_csv(file)
+        df = self._clean_dataframe(df)
+        df = self._detect_column_types(df)
+        
+        # Add metadata
+        df['_source_file'] = file_name
+        df['_source_sheet'] = 'Sheet1'
+        
+        return {
+            'file_name': file_name,
+            'sheets': [{
+                'sheet_name': 'Sheet1',
+                'data': df,
+                'rows': len(df),
+                'columns': len(df.columns)
+            }],
+            'total_rows': len(df),
+            'total_columns': len(df.columns)
+        }
+    
+    def _process_excel(self, file, file_name):
+        """Process Excel file with multiple sheets"""
+        excel_file = pd.ExcelFile(file)
+        sheets_data = []
+        total_rows = 0
+        all_columns = set()
+        
+        for sheet_name in excel_file.sheet_names:
+            df = pd.read_excel(file, sheet_name=sheet_name)
+            df = self._clean_dataframe(df)
+            df = self._detect_column_types(df)
+            
+            # Add metadata
+            df['_source_file'] = file_name
+            df['_source_sheet'] = sheet_name
+            
+            sheets_data.append({
+                'sheet_name': sheet_name,
+                'data': df,
+                'rows': len(df),
+                'columns': len(df.columns)
+            })
+            
+            total_rows += len(df)
+            all_columns.update(df.columns)
+        
+        return {
+            'file_name': file_name,
+            'sheets': sheets_data,
+            'total_rows': total_rows,
+            'total_columns': len(all_columns),
+            'sheet_count': len(sheets_data)
+        }
+    
+    def _clean_dataframe(self, df):
+        """Clean and standardize dataframe"""
+        # Remove completely empty rows and columns
+        df = df.dropna(how='all', axis=0)
+        df = df.dropna(how='all', axis=1)
+        
+        # Clean column names
         df.columns = df.columns.str.strip()
         
-        # Detect data types
-        date_cols = []
-        numeric_cols = []
-        categorical_cols = []
+        # Remove duplicate rows
+        df = df.drop_duplicates()
+        
+        # Reset index
+        df = df.reset_index(drop=True)
+        
+        return df
+    
+    def _detect_column_types(self, df):
+        """
+        Intelligent column type detection
+        Identifies: IDs, dates, metrics, categories
+        """
+        for col in df.columns:
+            # Skip metadata columns
+            if col.startswith('_'):
+                continue
+            
+            # Try to detect dates
+            if self._is_date_column(df[col]):
+                try:
+                    df[col] = pd.to_datetime(df[col], errors='coerce', format='mixed')
+                except:
+                    pass
+            
+            # Try to detect numeric columns
+            elif self._is_numeric_column(df[col]):
+                try:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                except:
+                    pass
+            
+            # Convert to string for ID-like columns
+            elif self._is_id_column(col, df[col]):
+                df[col] = df[col].astype(str).str.strip()
+        
+        return df
+    
+    def _is_date_column(self, series):
+        """Check if column contains dates"""
+        if series.dtype == 'datetime64[ns]':
+            return True
+        
+        # Check column name
+        date_keywords = ['date', 'time', 'dt', 'timestamp', 'day', 'month', 'year']
+        col_lower = str(series.name).lower()
+        if any(keyword in col_lower for keyword in date_keywords):
+            return True
+        
+        # Sample check
+        sample = series.dropna().head(100)
+        if len(sample) == 0:
+            return False
+        
+        try:
+            pd.to_datetime(sample, errors='coerce')
+            valid_dates = pd.to_datetime(sample, errors='coerce').notna().sum()
+            return valid_dates / len(sample) > 0.5
+        except:
+            return False
+    
+    def _is_numeric_column(self, series):
+        """Check if column should be numeric"""
+        if pd.api.types.is_numeric_dtype(series):
+            return True
+        
+        # Check if can be converted to numeric
+        sample = series.dropna().head(100)
+        if len(sample) == 0:
+            return False
+        
+        try:
+            pd.to_numeric(sample, errors='coerce')
+            valid_nums = pd.to_numeric(sample, errors='coerce').notna().sum()
+            return valid_nums / len(sample) > 0.7
+        except:
+            return False
+    
+    def _is_id_column(self, col_name, series):
+        """Check if column is an ID field"""
+        id_keywords = ['id', 'number', 'code', 'serial', 'customer', 'account', 
+                       'msisdn', 'imsi', 'imei', 'mac', 'version']
+        col_lower = str(col_name).lower()
+        
+        return any(keyword in col_lower for keyword in id_keywords)
+    
+    def get_column_metadata(self, df):
+        """Get detailed metadata about columns"""
+        metadata = []
         
         for col in df.columns:
+            if col.startswith('_'):
+                continue
+            
+            col_type = 'text'
             if pd.api.types.is_numeric_dtype(df[col]):
-                numeric_cols.append(col)
+                col_type = 'numeric'
             elif pd.api.types.is_datetime64_any_dtype(df[col]):
-                date_cols.append(col)
-            else:
-                # Try to convert to datetime with format='mixed' to avoid warning
-                try:
-                    pd.to_datetime(df[col], errors='raise', format='mixed')
-                    date_cols.append(col)
-                except:
-                    categorical_cols.append(col)
+                col_type = 'date'
+            
+            metadata.append({
+                'column': col,
+                'type': col_type,
+                'non_null': df[col].notna().sum(),
+                'null_count': df[col].isna().sum(),
+                'unique_values': df[col].nunique(),
+                'sample_values': df[col].dropna().head(3).tolist()
+            })
         
-        sheet_data = {
-            'dataframe': df,
-            'row_count': len(df),
-            'column_count': len(df.columns),
-            'columns': df.columns.tolist(),
-            'date_columns': date_cols,
-            'numeric_columns': numeric_cols,
-            'categorical_columns': categorical_cols,
-            'preview': df.head(10),
-            'data_types': df.dtypes.to_dict(),
-            'missing_values': df.isnull().sum().to_dict(),
-            'unique_counts': {col: df[col].nunique() for col in df.columns}
-        }
-        
-        return sheet_data
-    
-    def get_column_info(self, processed_data: List[Dict]) -> Dict[str, List]:
-        """
-        Get aggregated information about all columns across all files
-        """
-        all_columns = {}
-        
-        for file_info in processed_data:
-            for sheet_name, sheet_data in file_info['sheets'].items():
-                for col in sheet_data['columns']:
-                    key = f"{file_info['filename']}::{sheet_name}::{col}"
-                    all_columns[key] = {
-                        'file': file_info['filename'],
-                        'sheet': sheet_name,
-                        'column': col,
-                        'type': str(sheet_data['data_types'].get(col, 'unknown')),
-                        'unique_count': sheet_data['unique_counts'].get(col, 0),
-                        'missing_count': sheet_data['missing_values'].get(col, 0)
-                    }
-        
-        return all_columns
+        return metadata

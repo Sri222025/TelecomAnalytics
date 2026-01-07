@@ -1,6 +1,6 @@
 """
-AI Insights Engine using Groq Llama 3.3
-Generates natural language insights from telecom data
+AI Insights Engine v2 - Business-Focused Analysis
+Prioritizes business insights over data quality issues
 """
 import pandas as pd
 import numpy as np
@@ -14,16 +14,16 @@ class AIInsightsEngine:
     
     def analyze_data(self, df, file_summary):
         """
-        Main analysis function - generates comprehensive insights
+        Main analysis function - generates business-focused insights
         """
-        # Prepare data summary for AI
-        data_context = self._prepare_data_context(df, file_summary)
+        # Prepare business context (not just data quality)
+        business_context = self._prepare_business_context(df, file_summary)
         
-        # Generate insights using AI
-        insights = self._generate_insights(data_context)
+        # Generate business insights using AI
+        insights = self._generate_business_insights(business_context)
         
-        # Detect anomalies
-        anomalies = self._detect_anomalies(df)
+        # Detect anomalies (only severe ones)
+        anomalies = self._detect_critical_anomalies(df)
         
         # Generate recommendations
         recommendations = self._generate_recommendations(insights, anomalies)
@@ -33,108 +33,152 @@ class AIInsightsEngine:
             'key_insights': insights.get('insights', []),
             'anomalies': anomalies,
             'recommendations': recommendations,
-            'data_context': data_context
+            'business_context': business_context
         }
     
-    def _prepare_data_context(self, df, file_summary):
-        """Prepare structured context about the data for AI"""
-        # Basic stats
+    def _prepare_business_context(self, df, file_summary):
+        """Prepare business-oriented context for AI"""
+        
+        # Basic metrics
         total_records = len(df)
         total_columns = len([col for col in df.columns if not col.startswith('_')])
         
-        # Column types
+        # Identify business dimensions
         numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
         date_cols = df.select_dtypes(include=['datetime64']).columns.tolist()
-        text_cols = df.select_dtypes(include=['object']).columns.tolist()
+        categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
         
-        # Numeric summaries
-        numeric_summary = {}
-        for col in numeric_cols[:10]:  # Limit to top 10
-            if not col.startswith('_'):
-                numeric_summary[col] = {
-                    'mean': float(df[col].mean()) if df[col].notna().sum() > 0 else 0,
-                    'median': float(df[col].median()) if df[col].notna().sum() > 0 else 0,
-                    'min': float(df[col].min()) if df[col].notna().sum() > 0 else 0,
-                    'max': float(df[col].max()) if df[col].notna().sum() > 0 else 0,
-                    'std': float(df[col].std()) if df[col].notna().sum() > 1 else 0
+        # Remove metadata columns
+        numeric_cols = [c for c in numeric_cols if not c.startswith('_')]
+        date_cols = [c for c in date_cols if not c.startswith('_')]
+        categorical_cols = [c for c in categorical_cols if not c.startswith('_')]
+        
+        # Get top-level aggregations for business insights
+        business_metrics = {}
+        
+        # Numeric summaries (focus on business KPIs)
+        for col in numeric_cols[:15]:
+            valid_data = df[col].dropna()
+            if len(valid_data) > 0:
+                business_metrics[col] = {
+                    'total': float(valid_data.sum()),
+                    'average': float(valid_data.mean()),
+                    'median': float(valid_data.median()),
+                    'min': float(valid_data.min()),
+                    'max': float(valid_data.max()),
+                    'records': len(valid_data)
                 }
         
-        # Categorical summaries
-        categorical_summary = {}
-        for col in text_cols[:10]:  # Limit to top 10
-            if not col.startswith('_'):
-                value_counts = df[col].value_counts().head(5)
-                categorical_summary[col] = {
-                    'unique_values': int(df[col].nunique()),
-                    'top_values': value_counts.to_dict()
+        # Categorical breakdowns (for segmentation)
+        categorical_insights = {}
+        for col in categorical_cols[:10]:
+            value_counts = df[col].value_counts().head(10)
+            if len(value_counts) > 0:
+                categorical_insights[col] = {
+                    'top_categories': value_counts.to_dict(),
+                    'unique_count': int(df[col].nunique()),
+                    'distribution': 'diverse' if df[col].nunique() > len(df) * 0.5 else 'concentrated'
                 }
         
-        # Date range
-        date_ranges = {}
-        for col in date_cols:
-            if not col.startswith('_'):
-                date_ranges[col] = {
-                    'min': str(df[col].min()),
-                    'max': str(df[col].max())
+        # Time-based trends (if date columns exist)
+        time_insights = {}
+        for date_col in date_cols:
+            if df[date_col].notna().sum() > 0:
+                time_insights[date_col] = {
+                    'start_date': str(df[date_col].min()),
+                    'end_date': str(df[date_col].max()),
+                    'date_range_days': (df[date_col].max() - df[date_col].min()).days if pd.notna(df[date_col].min()) else 0
                 }
         
-        # Data quality
-        missing_data = {}
-        for col in df.columns:
-            if not col.startswith('_'):
-                null_count = df[col].isna().sum()
-                if null_count > 0:
-                    missing_data[col] = {
-                        'count': int(null_count),
-                        'percentage': float((null_count / len(df)) * 100)
-                    }
+        # Cross-dimensional analysis (e.g., metrics by category)
+        cross_analysis = {}
+        if len(categorical_cols) > 0 and len(numeric_cols) > 0:
+            # Take first categorical and first numeric for sample analysis
+            cat_col = categorical_cols[0]
+            num_col = numeric_cols[0]
+            
+            grouped = df.groupby(cat_col)[num_col].agg(['sum', 'mean', 'count']).round(2)
+            top_performers = grouped.nlargest(5, 'sum')
+            
+            cross_analysis[f'{num_col}_by_{cat_col}'] = {
+                'top_5': top_performers.to_dict('index')
+            }
+        
+        # Data completeness (only mention if severe)
+        completeness = (df.notna().sum().sum() / (len(df) * len(df.columns))) * 100
         
         return {
             'total_records': total_records,
             'total_columns': total_columns,
             'files_processed': file_summary.get('files_processed', 1),
             'merge_method': file_summary.get('method', 'unknown'),
-            'numeric_columns': numeric_summary,
-            'categorical_columns': categorical_summary,
-            'date_ranges': date_ranges,
-            'missing_data': missing_data
+            'business_metrics': business_metrics,
+            'categorical_insights': categorical_insights,
+            'time_insights': time_insights,
+            'cross_analysis': cross_analysis,
+            'completeness_score': float(completeness)
         }
     
-    def _generate_insights(self, data_context):
-        """Use Groq AI to generate natural language insights"""
-        prompt = f"""You are a senior telecom business analyst. Analyze this dataset and provide actionable insights.
+    def _generate_business_insights(self, context):
+        """Use AI to generate BUSINESS insights (not data quality issues)"""
+        
+        prompt = f"""You are a senior telecom business analyst. Your job is to find BUSINESS INSIGHTS, not data quality issues.
 
-Dataset Overview:
-- Total Records: {data_context['total_records']:,}
-- Total Columns: {data_context['total_columns']}
-- Files Processed: {data_context['files_processed']}
+Dataset Context:
+- Records: {context['total_records']:,}
+- Dimensions: {context['total_columns']}
+- Files: {context['files_processed']}
+- Data Completeness: {context['completeness_score']:.1f}%
 
-Numeric Metrics:
-{json.dumps(data_context['numeric_columns'], indent=2)}
+Business Metrics:
+{json.dumps(context['business_metrics'], indent=2)}
 
-Categorical Dimensions:
-{json.dumps(data_context['categorical_columns'], indent=2)}
+Categorical Breakdowns:
+{json.dumps(context['categorical_insights'], indent=2)}
 
-Data Quality Issues:
-{json.dumps(data_context['missing_data'], indent=2)}
+Cross-Dimensional Analysis:
+{json.dumps(context['cross_analysis'], indent=2)}
 
-Please provide:
-1. Executive Summary (2-3 sentences about overall data health and key patterns)
-2. Top 5 Business Insights (specific, actionable findings with numbers)
+Time Period:
+{json.dumps(context['time_insights'], indent=2)}
 
-Focus on:
-- Subscriber trends and patterns
-- Usage anomalies
-- Data quality issues
-- Regional/device/plan variations
-- Business risks or opportunities
+CRITICAL INSTRUCTIONS:
+1. IGNORE minor data quality issues (unless completeness < 70%)
+2. FOCUS ON business patterns, trends, and opportunities
+3. Look for:
+   - High/low performing segments
+   - Usage patterns and trends
+   - Revenue opportunities
+   - Customer behavior insights
+   - Operational efficiency findings
+   - Regional/device/plan variations
+   - Growth areas or risks
+
+4. DO NOT mention:
+   - Missing data (unless > 30%)
+   - Duplicate records
+   - Data types or column issues
+
+Provide:
+1. Executive Summary (2-3 sentences about KEY BUSINESS FINDINGS)
+2. Top 5 BUSINESS Insights (specific, actionable, numbers-focused)
+
+Example Good Insight:
+"High Impact: Delhi region shows 45% higher usage than national average with 12K active users, indicating strong market penetration"
+
+Example BAD Insight (DON'T DO THIS):
+"Region column has 94.7% missing values"
 
 Format as JSON:
 {{
-  "summary": "Executive summary here...",
+  "summary": "Business-focused executive summary highlighting key patterns and opportunities...",
   "insights": [
-    {{"title": "Insight 1", "description": "Detailed finding...", "impact": "high/medium/low"}},
-    ...
+    {{
+      "title": "Business insight title (e.g., 'Top Region Performance')",
+      "description": "Detailed business finding with specific numbers and implications...",
+      "impact": "high/medium/low",
+      "category": "revenue/usage/growth/efficiency/risk"
+    }}
   ]
 }}
 """
@@ -143,16 +187,19 @@ Format as JSON:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a telecom business analyst expert. Always respond with valid JSON."},
+                    {
+                        "role": "system", 
+                        "content": "You are a business analyst focused on actionable insights, NOT a data quality checker. Always respond with valid JSON."
+                    },
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3,
-                max_tokens=2000
+                temperature=0.4,
+                max_tokens=2500
             )
             
             content = response.choices[0].message.content
             
-            # Extract JSON from response
+            # Extract JSON
             if '```json' in content:
                 content = content.split('```json')[1].split('```')[0]
             elif '```' in content:
@@ -162,118 +209,127 @@ Format as JSON:
             return result
             
         except Exception as e:
-            # Fallback if AI fails
-            return {
-                'summary': f"Analysis completed on {data_context['total_records']:,} records across {data_context['total_columns']} dimensions.",
-                'insights': [
-                    {
-                        'title': 'Data Processing Complete',
-                        'description': f"Successfully processed {data_context['files_processed']} file(s) with {data_context['total_records']:,} total records.",
-                        'impact': 'high'
-                    }
-                ]
-            }
+            # Fallback with generic business insights
+            return self._generate_fallback_insights(context)
     
-    def _detect_anomalies(self, df):
-        """Detect statistical anomalies in the data"""
+    def _generate_fallback_insights(self, context):
+        """Generate rule-based business insights if AI fails"""
+        insights = []
+        
+        # Analyze numeric metrics
+        for metric, stats in list(context['business_metrics'].items())[:5]:
+            if stats['records'] > 100:
+                insights.append({
+                    'title': f"{metric} Analysis",
+                    'description': f"Total {metric}: {stats['total']:,.0f} across {stats['records']:,} records. Average: {stats['average']:.2f}, Range: {stats['min']:.2f} to {stats['max']:.2f}",
+                    'impact': 'medium',
+                    'category': 'usage'
+                })
+        
+        # Analyze categorical distributions
+        for dimension, info in list(context['categorical_insights'].items())[:3]:
+            top_cat = max(info['top_categories'].items(), key=lambda x: x[1])
+            insights.append({
+                'title': f"{dimension} Distribution",
+                'description': f"Top category '{top_cat[0]}' accounts for {top_cat[1]:,} records ({top_cat[1]/context['total_records']*100:.1f}% of total). {info['unique_count']} unique values identified.",
+                'impact': 'medium',
+                'category': 'segmentation'
+            })
+        
+        summary = f"Analysis completed on {context['total_records']:,} records across {context['total_columns']} dimensions from {context['files_processed']} file(s)."
+        
+        return {
+            'summary': summary,
+            'insights': insights[:5]
+        }
+    
+    def _detect_critical_anomalies(self, df):
+        """Detect ONLY critical anomalies (not minor data quality issues)"""
         anomalies = []
         
-        # Check numeric columns for outliers
+        # Only flag missing data if > 30%
+        for col in df.columns:
+            if col.startswith('_'):
+                continue
+            
+            null_pct = (df[col].isna().sum() / len(df)) * 100
+            
+            if null_pct > 30:
+                severity = 'critical' if null_pct > 60 else 'warning'
+                anomalies.append({
+                    'type': 'missing_data',
+                    'column': col,
+                    'severity': severity,
+                    'percentage': f"{null_pct:.1f}%",
+                    'description': f"{col} has {null_pct:.1f}% missing values - may impact analysis"
+                })
+        
+        # Detect extreme outliers in numeric columns (only if very extreme)
         numeric_cols = df.select_dtypes(include=['number']).columns
         
         for col in numeric_cols:
             if col.startswith('_'):
                 continue
             
-            # Skip if too many nulls
-            if df[col].isna().sum() / len(df) > 0.5:
+            valid_data = df[col].dropna()
+            if len(valid_data) < 10:
                 continue
             
-            # Z-score method for outliers
-            mean = df[col].mean()
-            std = df[col].std()
+            Q1 = valid_data.quantile(0.25)
+            Q3 = valid_data.quantile(0.75)
+            IQR = Q3 - Q1
             
-            if std > 0:
-                outliers = df[np.abs((df[col] - mean) / std) > 3]
-                
-                if len(outliers) > 0:
-                    anomalies.append({
-                        'type': 'outlier',
-                        'column': col,
-                        'severity': 'warning',
-                        'count': len(outliers),
-                        'description': f"Found {len(outliers)} outlier(s) in {col} (values > 3 std deviations)",
-                        'sample_values': outliers[col].head(3).tolist()
-                    })
-        
-        # Check for missing data
-        for col in df.columns:
-            if col.startswith('_'):
-                continue
+            # Only flag EXTREME outliers (3x IQR, not 1.5x)
+            extreme_outliers = valid_data[(valid_data < Q1 - 3*IQR) | (valid_data > Q3 + 3*IQR)]
             
-            null_count = df[col].isna().sum()
-            null_pct = (null_count / len(df)) * 100
-            
-            if null_pct > 20:
-                severity = 'critical' if null_pct > 50 else 'warning'
+            if len(extreme_outliers) > 0 and len(extreme_outliers) < len(valid_data) * 0.01:  # Less than 1%
                 anomalies.append({
-                    'type': 'missing_data',
+                    'type': 'extreme_outlier',
                     'column': col,
-                    'severity': severity,
-                    'count': null_count,
-                    'percentage': f"{null_pct:.1f}%",
-                    'description': f"{col} has {null_pct:.1f}% missing values ({null_count:,} records)"
+                    'severity': 'info',
+                    'count': len(extreme_outliers),
+                    'description': f"Found {len(extreme_outliers)} extreme outliers in {col} (may indicate data entry errors)"
                 })
-        
-        # Check for duplicates
-        duplicate_count = df.duplicated().sum()
-        if duplicate_count > 0:
-            anomalies.append({
-                'type': 'duplicate',
-                'severity': 'info',
-                'count': duplicate_count,
-                'percentage': f"{(duplicate_count/len(df)*100):.1f}%",
-                'description': f"Found {duplicate_count:,} duplicate records ({(duplicate_count/len(df)*100):.1f}% of data)"
-            })
         
         # Sort by severity
         severity_order = {'critical': 0, 'warning': 1, 'info': 2}
         anomalies.sort(key=lambda x: severity_order.get(x['severity'], 3))
         
-        return anomalies
+        return anomalies[:5]  # Limit to top 5 anomalies only
     
     def _generate_recommendations(self, insights, anomalies):
-        """Generate actionable recommendations"""
+        """Generate business-focused recommendations"""
         recommendations = []
         
-        # Based on anomalies
-        critical_anomalies = [a for a in anomalies if a['severity'] == 'critical']
-        if critical_anomalies:
+        # Based on insights
+        high_impact = [i for i in insights.get('insights', []) if i.get('impact') == 'high']
+        if high_impact:
+            for insight in high_impact[:2]:
+                recommendations.append({
+                    'priority': 'high',
+                    'category': insight.get('category', 'Business').title(),
+                    'action': f"Investigate: {insight['title']}",
+                    'details': insight['description']
+                })
+        
+        # Revenue/growth opportunities
+        revenue_insights = [i for i in insights.get('insights', []) if i.get('category') == 'revenue']
+        if revenue_insights:
             recommendations.append({
                 'priority': 'high',
-                'category': 'Data Quality',
-                'action': f"Address {len(critical_anomalies)} critical data quality issues immediately",
-                'details': [a['description'] for a in critical_anomalies[:3]]
+                'category': 'Revenue',
+                'action': 'Capitalize on revenue opportunities identified',
+                'details': [i['title'] for i in revenue_insights[:2]]
             })
         
-        # Based on missing data
-        missing_issues = [a for a in anomalies if a['type'] == 'missing_data']
-        if len(missing_issues) > 3:
+        # Only mention data quality if critical
+        critical_data = [a for a in anomalies if a['severity'] == 'critical']
+        if critical_data:
             recommendations.append({
                 'priority': 'medium',
-                'category': 'Data Completeness',
-                'action': 'Improve data collection processes',
-                'details': f"{len(missing_issues)} columns have significant missing data"
+                'category': 'Data Quality',
+                'action': f'Address {len(critical_data)} critical data issue(s)',
+                'details': [a['description'] for a in critical_data[:2]]
             })
         
-        # Based on insights
-        high_impact_insights = [i for i in insights.get('insights', []) if i.get('impact') == 'high']
-        if high_impact_insights:
-            recommendations.append({
-                'priority': 'high',
-                'category': 'Business Action',
-                'action': 'Review high-impact findings',
-                'details': [i['title'] for i in high_impact_insights[:3]]
-            })
-        
-        return recommendations
+        return recommendations[:5]  # Limit to top 5

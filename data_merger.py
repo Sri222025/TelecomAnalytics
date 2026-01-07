@@ -1,200 +1,242 @@
+"""
+Intelligent Data Merger
+Auto-detects relationships between files and merges smartly
+"""
 import pandas as pd
-from typing import List, Dict, Any
-import streamlit as st
+import numpy as np
 
 class DataMerger:
-    """Merge datasets based on detected relationships"""
+    def __init__(self):
+        self.common_id_patterns = [
+            'customer_id', 'customerid', 'cust_id',
+            'serial_number', 'serial', 'serialnumber',
+            'msisdn', 'mobile', 'phone',
+            'account', 'account_id',
+            'id', 'code', 'number',
+            'version', 'fw_version', 'firmware',
+            'imei', 'imsi', 'mac'
+        ]
     
-    def merge_data(self, processed_data: List[Dict], relationships: List[Dict]) -> pd.DataFrame:
+    def detect_relationships(self, processed_files):
         """
-        Merge all datasets based on defined relationships
+        Auto-detect potential relationships between files
+        Returns list of potential merge keys
         """
-        if not relationships:
-            # If no relationships, concatenate all data
-            return self._concatenate_all(processed_data)
+        if len(processed_files) <= 1:
+            return []
         
-        # Start with the first dataset
-        merged_df = None
-        merged_sheets = set()
-        
-        # Group relationships by source
-        for rel in relationships:
-            source_key = f"{rel['source_file']}::{rel['source_sheet']}"
-            target_key = f"{rel['target_file']}::{rel['target_sheet']}"
-            
-            # Get dataframes
-            source_df = self._get_dataframe(processed_data, rel['source_file'], rel['source_sheet'])
-            target_df = self._get_dataframe(processed_data, rel['target_file'], rel['target_sheet'])
-            
-            if source_df is None or target_df is None:
-                continue
-            
-            # Add prefix to columns to avoid conflicts (except join columns)
-            source_prefix = f"{rel['source_sheet']}_"
-            target_prefix = f"{rel['target_sheet']}_"
-            
-            source_df_renamed = source_df.copy()
-            target_df_renamed = target_df.copy()
-            
-            # Rename columns except the join columns
-            source_df_renamed.columns = [
-                col if col == rel['source_column'] else f"{source_prefix}{col}" 
-                for col in source_df.columns
-            ]
-            target_df_renamed.columns = [
-                col if col == rel['target_column'] else f"{target_prefix}{col}" 
-                for col in target_df.columns
-            ]
-            
-            # **FIX: Convert merge columns to same type (string) to avoid type mismatch**
-            try:
-                source_df_renamed[rel['source_column']] = source_df_renamed[rel['source_column']].astype(str).str.strip()
-                target_df_renamed[rel['target_column']] = target_df_renamed[rel['target_column']].astype(str).str.strip()
-            except Exception as e:
-                st.warning(f"Warning: Could not convert columns to string for merging: {str(e)}")
-            
-            # Perform merge
-            if merged_df is None:
-                # First merge
-                try:
-                    merged_df = pd.merge(
-                        source_df_renamed,
-                        target_df_renamed,
-                        left_on=rel['source_column'],
-                        right_on=rel['target_column'],
-                        how=rel.get('join_type', 'inner'),
-                        suffixes=('', '_dup')
-                    )
-                    merged_sheets.add(source_key)
-                    merged_sheets.add(target_key)
-                except Exception as e:
-                    st.error(f"Error in first merge: {str(e)}")
-                    continue
-            else:
-                # Subsequent merges
-                if source_key in merged_sheets and target_key not in merged_sheets:
-                    # Merge target into existing merged_df
-                    try:
-                        # **FIX: Ensure the column in merged_df is also string type**
-                        if rel['source_column'] in merged_df.columns:
-                            merged_df[rel['source_column']] = merged_df[rel['source_column']].astype(str).str.strip()
-                        
-                        merged_df = pd.merge(
-                            merged_df,
-                            target_df_renamed,
-                            left_on=rel['source_column'],
-                            right_on=rel['target_column'],
-                            how='left',
-                            suffixes=('', '_dup')
-                        )
-                        merged_sheets.add(target_key)
-                    except Exception as e:
-                        st.error(f"Error merging {target_key}: {str(e)}")
-                        continue
-                        
-                elif target_key in merged_sheets and source_key not in merged_sheets:
-                    # Merge source into existing merged_df
-                    try:
-                        # **FIX: Ensure the column in merged_df is also string type**
-                        if rel['target_column'] in merged_df.columns:
-                            merged_df[rel['target_column']] = merged_df[rel['target_column']].astype(str).str.strip()
-                        
-                        merged_df = pd.merge(
-                            merged_df,
-                            source_df_renamed,
-                            left_on=rel['target_column'],
-                            right_on=rel['source_column'],
-                            how='left',
-                            suffixes=('', '_dup')
-                        )
-                        merged_sheets.add(source_key)
-                    except Exception as e:
-                        st.error(f"Error merging {source_key}: {str(e)}")
-                        continue
-        
-        # Add any sheets that weren't merged
-        for file_info in processed_data:
-            for sheet_name, sheet_data in file_info['sheets'].items():
-                sheet_key = f"{file_info['filename']}::{sheet_name}"
-                if sheet_key not in merged_sheets:
-                    df = sheet_data['dataframe']
-                    # Add as separate columns with prefix
-                    df_prefixed = df.copy()
-                    df_prefixed.columns = [f"{sheet_name}_{col}" for col in df.columns]
-                    
-                    if merged_df is None:
-                        merged_df = df_prefixed
-                    # else:
-                    #     # Concatenate horizontally (this might not make sense without a relationship)
-                    #     # Skip for now
-                    #     pass
-        
-        # Remove duplicate columns
-        if merged_df is not None:
-            merged_df = self._remove_duplicate_columns(merged_df)
-        
-        return merged_df if merged_df is not None else pd.DataFrame()
-    
-    def _get_dataframe(self, processed_data: List[Dict], filename: str, sheet_name: str) -> pd.DataFrame:
-        """
-        Get a specific dataframe from processed data
-        """
-        for file_info in processed_data:
-            if file_info['filename'] == filename:
-                if sheet_name in file_info['sheets']:
-                    return file_info['sheets'][sheet_name]['dataframe'].copy()
-        return None
-    
-    def _concatenate_all(self, processed_data: List[Dict]) -> pd.DataFrame:
-        """
-        Concatenate all sheets when no relationships are defined
-        """
+        # Collect all dataframes with their sources
         all_dfs = []
+        for file_info in processed_files:
+            for sheet in file_info['sheets']:
+                all_dfs.append({
+                    'file': file_info['file_name'],
+                    'sheet': sheet['sheet_name'],
+                    'df': sheet['data'],
+                    'columns': [col for col in sheet['data'].columns if not col.startswith('_')]
+                })
         
-        for file_info in processed_data:
-            for sheet_name, sheet_data in file_info['sheets'].items():
-                df = sheet_data['dataframe'].copy()
-                # Add metadata columns
-                df['_source_file'] = file_info['filename']
-                df['_source_sheet'] = sheet_name
-                all_dfs.append(df)
+        # Find common columns
+        relationships = []
         
-        if all_dfs:
-            # Concatenate vertically
-            return pd.concat(all_dfs, ignore_index=True, sort=False)
+        for i in range(len(all_dfs)):
+            for j in range(i + 1, len(all_dfs)):
+                df1 = all_dfs[i]
+                df2 = all_dfs[j]
+                
+                # Find common column names (case-insensitive)
+                common_cols = self._find_common_columns(df1['columns'], df2['columns'])
+                
+                for col in common_cols:
+                    # Check if it's a good merge key
+                    if self._is_good_merge_key(df1['df'], df2['df'], col):
+                        relationships.append({
+                            'file1': df1['file'],
+                            'sheet1': df1['sheet'],
+                            'file2': df2['file'],
+                            'sheet2': df2['sheet'],
+                            'key_column': col,
+                            'match_rate': self._calculate_match_rate(df1['df'], df2['df'], col)
+                        })
+        
+        # Sort by match rate
+        relationships.sort(key=lambda x: x['match_rate'], reverse=True)
+        
+        return relationships
+    
+    def _find_common_columns(self, cols1, cols2):
+        """Find common column names (case-insensitive)"""
+        cols1_lower = {col.lower(): col for col in cols1}
+        cols2_lower = {col.lower(): col for col in cols2}
+        
+        common = []
+        for col_lower in cols1_lower:
+            if col_lower in cols2_lower:
+                common.append(cols1_lower[col_lower])
+        
+        return common
+    
+    def _is_good_merge_key(self, df1, df2, col):
+        """Check if column is suitable for merging"""
+        # Must exist in both
+        if col not in df1.columns or col not in df2.columns:
+            return False
+        
+        # Should have reasonable number of unique values
+        unique1 = df1[col].nunique()
+        unique2 = df2[col].nunique()
+        
+        # At least 2 unique values
+        if unique1 < 2 or unique2 < 2:
+            return False
+        
+        # Not too many nulls (< 50%)
+        null_pct1 = df1[col].isna().sum() / len(df1)
+        null_pct2 = df2[col].isna().sum() / len(df2)
+        
+        if null_pct1 > 0.5 or null_pct2 > 0.5:
+            return False
+        
+        return True
+    
+    def _calculate_match_rate(self, df1, df2, col):
+        """Calculate percentage of matching values"""
+        values1 = set(df1[col].dropna().astype(str))
+        values2 = set(df2[col].dropna().astype(str))
+        
+        if not values1 or not values2:
+            return 0.0
+        
+        intersection = len(values1 & values2)
+        union = len(values1 | values2)
+        
+        return (intersection / union) * 100 if union > 0 else 0.0
+    
+    def merge_files(self, processed_files, relationships=None):
+        """
+        Merge multiple files based on detected relationships
+        If no relationships, concatenate all data
+        """
+        if len(processed_files) == 0:
+            return None, "No files to merge"
+        
+        if len(processed_files) == 1:
+            # Single file - just concatenate sheets
+            return self._merge_single_file(processed_files[0])
+        
+        # Multiple files
+        if relationships and len(relationships) > 0:
+            return self._merge_with_relationships(processed_files, relationships)
         else:
-            return pd.DataFrame()
+            # No relationships - concatenate all
+            return self._concatenate_all(processed_files)
     
-    def _remove_duplicate_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Remove duplicate columns that end with _dup
-        """
-        # Remove columns ending with _dup
-        cols_to_keep = [col for col in df.columns if not col.endswith('_dup')]
-        return df[cols_to_keep]
+    def _merge_single_file(self, file_info):
+        """Merge all sheets from a single file"""
+        all_data = []
+        
+        for sheet in file_info['sheets']:
+            all_data.append(sheet['data'])
+        
+        merged = pd.concat(all_data, ignore_index=True)
+        
+        summary = {
+            'method': 'single_file',
+            'files_processed': 1,
+            'sheets_processed': len(file_info['sheets']),
+            'total_records': len(merged),
+            'columns': len(merged.columns)
+        }
+        
+        return merged, summary
     
-    def merge_two_dataframes(self, df1: pd.DataFrame, df2: pd.DataFrame,
-                           left_on: str, right_on: str, 
-                           how: str = 'inner') -> pd.DataFrame:
-        """
-        Merge two dataframes on specified columns
-        """
-        try:
-            # **FIX: Convert merge columns to string before merging**
-            df1_copy = df1.copy()
-            df2_copy = df2.copy()
-            
-            df1_copy[left_on] = df1_copy[left_on].astype(str).str.strip()
-            df2_copy[right_on] = df2_copy[right_on].astype(str).str.strip()
-            
-            merged = pd.merge(
-                df1_copy, df2_copy,
-                left_on=left_on,
-                right_on=right_on,
-                how=how,
-                suffixes=('', '_right')
-            )
-            return merged
-        except Exception as e:
-            st.error(f"Error merging dataframes: {str(e)}")
-            return pd.DataFrame()
+    def _concatenate_all(self, processed_files):
+        """Concatenate all data (no relationships)"""
+        all_data = []
+        total_sheets = 0
+        
+        for file_info in processed_files:
+            for sheet in file_info['sheets']:
+                all_data.append(sheet['data'])
+                total_sheets += 1
+        
+        # Concatenate with outer join to keep all columns
+        merged = pd.concat(all_data, ignore_index=True, sort=False)
+        
+        summary = {
+            'method': 'concatenate',
+            'files_processed': len(processed_files),
+            'sheets_processed': total_sheets,
+            'total_records': len(merged),
+            'columns': len(merged.columns),
+            'note': 'Files concatenated (no relationships detected)'
+        }
+        
+        return merged, summary
+    
+    def _merge_with_relationships(self, processed_files, relationships):
+        """Merge files using detected relationships"""
+        # Start with first file's data
+        all_dfs = []
+        for file_info in processed_files:
+            for sheet in file_info['sheets']:
+                all_dfs.append({
+                    'file': file_info['file_name'],
+                    'sheet': sheet['sheet_name'],
+                    'df': sheet['data']
+                })
+        
+        # Use the best relationship
+        best_rel = relationships[0]
+        merge_key = best_rel['key_column']
+        
+        # Convert merge key to string and strip whitespace
+        for df_info in all_dfs:
+            if merge_key in df_info['df'].columns:
+                df_info['df'][merge_key] = df_info['df'][merge_key].astype(str).str.strip()
+        
+        # Merge all dataframes on the common key
+        merged = all_dfs[0]['df']
+        
+        for i in range(1, len(all_dfs)):
+            try:
+                # Use outer join to keep all records
+                merged = pd.merge(
+                    merged,
+                    all_dfs[i]['df'],
+                    on=merge_key,
+                    how='outer',
+                    suffixes=('', f'_file{i}')
+                )
+            except Exception as e:
+                # If merge fails, concatenate
+                merged = pd.concat([merged, all_dfs[i]['df']], ignore_index=True, sort=False)
+        
+        summary = {
+            'method': 'merge',
+            'merge_key': merge_key,
+            'files_processed': len(processed_files),
+            'total_records': len(merged),
+            'columns': len(merged.columns),
+            'match_rate': f"{best_rel['match_rate']:.1f}%",
+            'note': f"Files merged on '{merge_key}'"
+        }
+        
+        return merged, summary
+    
+    def get_merge_preview(self, merged_df, summary):
+        """Generate a preview of merged data"""
+        preview = {
+            'total_records': len(merged_df),
+            'total_columns': len(merged_df.columns),
+            'method': summary['method'],
+            'sample_data': merged_df.head(5).to_dict('records'),
+            'column_list': [col for col in merged_df.columns if not col.startswith('_')],
+            'data_quality': {
+                'complete_records': merged_df.notna().all(axis=1).sum(),
+                'records_with_nulls': merged_df.isna().any(axis=1).sum(),
+                'total_nulls': merged_df.isna().sum().sum()
+            }
+        }
+        
+        return preview

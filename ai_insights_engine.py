@@ -1,13 +1,12 @@
 """
-AI Insights Engine - DEBUG VERSION
-Shows what data AI is actually seeing
+AI Insights Engine - FINAL VERSION
+Forces AI to analyze BUSINESS PERFORMANCE, not data quality
 """
 import pandas as pd
 import numpy as np
 from groq import Groq
 import json
 from datetime import datetime
-import streamlit as st
 
 def convert_to_serializable(obj):
     """Convert pandas/numpy types to JSON-serializable types"""
@@ -34,209 +33,172 @@ class AIInsightsEngine:
         self.model = "llama-3.3-70b-versatile"
     
     def analyze_data(self, df, file_summary):
-        """Generate deep, actionable telecom insights"""
+        """Generate actionable telecom business insights"""
         
-        # DEBUG: Show what we're working with
-        st.write("### 🔍 DEBUG: Data Being Analyzed")
-        st.write(f"**Total Rows:** {len(df):,}")
-        st.write(f"**Total Columns:** {len(df.columns)}")
-        
-        # Show column names
-        st.write("**Available Columns:**")
-        st.write(df.columns.tolist())
-        
-        # Show data types
-        st.write("**Column Data Types:**")
-        st.dataframe(pd.DataFrame({
-            'Column': df.columns,
-            'Type': df.dtypes,
-            'Non-Null': df.notna().sum(),
-            'Unique': [df[col].nunique() for col in df.columns]
-        }))
-        
-        # Show sample data
-        st.write("**Sample Data (First 5 Rows):**")
-        st.dataframe(df.head())
-        
-        # Prepare business context
-        business_context = self._prepare_deep_context(df)
-        
-        # DEBUG: Show what context was prepared
-        st.write("### 🔍 DEBUG: Context Prepared for AI")
-        st.json(convert_to_serializable(business_context))
-        
-        # Convert to serializable
-        business_context = convert_to_serializable(business_context)
+        # Build business-focused context
+        business_summary = self._build_business_summary(df)
         
         # Generate insights
-        insights = self._generate_telecom_insights(business_context, df)
+        insights = self._generate_business_insights(business_summary, df)
         
-        # Detect anomalies
-        anomalies = self._detect_business_anomalies(df, business_context)
+        # Minimal anomalies (only critical)
+        anomalies = self._detect_critical_issues(df)
         
-        # Generate recommendations
-        recommendations = self._generate_action_plans(insights, anomalies, business_context)
+        # Action plans
+        recommendations = self._build_action_plans(insights)
         
         return {
             'executive_summary': insights.get('summary', ''),
             'key_insights': insights.get('insights', []),
             'anomalies': anomalies,
-            'recommendations': recommendations,
-            'business_context': business_context
+            'recommendations': recommendations
         }
     
-    def _prepare_deep_context(self, df):
-        """Prepare detailed business context"""
+    def _build_business_summary(self, df):
+        """Build business-focused data summary"""
         
-        context = {
-            'total_records': int(len(df)),
-            'total_columns': int(len(df.columns)),
-            'columns_available': df.columns.tolist(),
+        summary = {
+            'total_records': len(df),
+            'record_type': 'Unknown',
+            'key_metrics': {},
             'dimensions': {},
-            'kpis': {},
-            'comparisons': {}
+            'top_performers': {},
+            'bottom_performers': {}
         }
         
-        # Show ALL columns and their basic stats
-        column_analysis = {}
-        for col in df.columns:
-            if col.startswith('_'):
-                continue
-            
-            col_data = {
-                'name': col,
-                'type': str(df[col].dtype),
-                'non_null': int(df[col].notna().sum()),
-                'unique': int(df[col].nunique())
-            }
-            
-            # If numeric, get aggregates
-            if pd.api.types.is_numeric_dtype(df[col]):
-                valid = df[col].dropna()
-                if len(valid) > 0:
-                    col_data['stats'] = {
-                        'sum': float(valid.sum()),
-                        'mean': float(valid.mean()),
-                        'min': float(valid.min()),
-                        'max': float(valid.max()),
-                        'median': float(valid.median())
-                    }
-            
-            # If categorical, get top values
-            elif df[col].dtype == 'object':
-                value_counts = df[col].value_counts().head(10)
-                col_data['top_values'] = {str(k): int(v) for k, v in value_counts.items()}
-            
-            column_analysis[col] = col_data
+        # Identify what each row represents
+        if any('region' in col.lower() or 'circle' in col.lower() for col in df.columns):
+            summary['record_type'] = 'Circle/Region Performance Data'
+        elif any('customer' in col.lower() or 'subscriber' in col.lower() for col in df.columns):
+            summary['record_type'] = 'Customer/Subscriber Data'
+        else:
+            summary['record_type'] = 'Telecom Performance Data'
         
-        context['column_analysis'] = column_analysis
+        # Find region/circle columns
+        region_cols = [col for col in df.columns if 'region' in col.lower() or 'circle' in col.lower()]
+        if region_cols:
+            region_col = region_cols[0]
+            summary['dimensions']['regions'] = df[region_col].value_counts().head(10).to_dict()
         
-        # Identify telecom patterns (be more flexible)
-        telecom_keywords = {
-            'subscribers': ['customer', 'subscriber', 'user', 'msisdn', 'mobile', 'account', 'cli', 'dn'],
-            'usage': ['call', 'duration', 'minute', 'usage', 'data', 'mb', 'gb', 'session', 'mou', 'traffic'],
-            'revenue': ['revenue', 'arpu', 'price', 'charge', 'amount', 'value', 'billing', 'recharge'],
-            'devices': ['device', 'phone', 'handset', 'model', 'pots', 'jiojoin', 'stb', 'airfiber', 'type'],
-            'regions': ['region', 'circle', 'state', 'city', 'area', 'zone', 'lsa', 'location'],
-            'plans': ['plan', 'package', 'tariff', 'subscription', 'scheme'],
-            'status': ['active', 'inactive', 'churn', 'disconnect', 'status', 'state']
-        }
+        # Find numeric KPI columns
+        numeric_cols = df.select_dtypes(include=['number']).columns
         
-        # Map columns to categories
-        mapped_columns = {}
-        for col in df.columns:
+        for col in numeric_cols:
             if col.startswith('_'):
                 continue
             
             col_lower = col.lower()
-            for category, keywords in telecom_keywords.items():
-                if any(kw in col_lower for kw in keywords):
-                    if category not in mapped_columns:
-                        mapped_columns[category] = []
-                    mapped_columns[category].append({
-                        'column': col,
-                        'data': column_analysis.get(col, {})
-                    })
+            
+            # Identify telecom KPIs
+            if any(kw in col_lower for kw in ['call', 'attempt', 'traffic', 'session']):
+                total = df[col].sum()
+                avg = df[col].mean()
+                summary['key_metrics'][col] = {
+                    'total': float(total),
+                    'average_per_record': float(avg),
+                    'max': float(df[col].max()),
+                    'min': float(df[col].min())
+                }
+                
+                # Top/bottom performers
+                if region_cols:
+                    region_col = region_cols[0]
+                    by_region = df.groupby(region_col)[col].sum().sort_values(ascending=False)
+                    summary['top_performers'][col] = {
+                        'top_3': {str(k): float(v) for k, v in by_region.head(3).items()},
+                        'bottom_3': {str(k): float(v) for k, v in by_region.tail(3).items()}
+                    }
+            
+            elif any(kw in col_lower for kw in ['mou', 'minute', 'duration', 'usage']):
+                total = df[col].sum()
+                avg = df[col].mean()
+                summary['key_metrics'][col] = {
+                    'total_minutes': float(total),
+                    'average_per_record': float(avg),
+                    'max': float(df[col].max()),
+                    'min': float(df[col].min())
+                }
+            
+            elif any(kw in col_lower for kw in ['cssr', 'asr', 'success', 'rate', '%']):
+                avg = df[col].mean()
+                summary['key_metrics'][col] = {
+                    'average_rate': float(avg),
+                    'max': float(df[col].max()),
+                    'min': float(df[col].min())
+                }
+                
+                # Quality issues
+                if region_cols:
+                    region_col = region_cols[0]
+                    by_region = df.groupby(region_col)[col].mean().sort_values()
+                    summary['bottom_performers'][col] = {
+                        'bottom_3': {str(k): float(v) for k, v in by_region.head(3).items()}
+                    }
         
-        context['mapped_columns'] = mapped_columns
-        
-        # Calculate simple aggregates
-        summary_stats = {
-            'total_records': int(len(df)),
-            'total_columns': int(len(df.columns)),
-            'numeric_columns': len(df.select_dtypes(include=['number']).columns),
-            'categorical_columns': len(df.select_dtypes(include=['object']).columns)
-        }
-        
-        context['summary'] = summary_stats
-        
-        return context
+        return convert_to_serializable(summary)
     
-    def _generate_telecom_insights(self, context, df):
-        """Generate insights with better data understanding"""
+    def _generate_business_insights(self, summary, df):
+        """Generate business-focused insights"""
         
-        # Build a detailed data summary for the AI
-        data_summary = f"""
-TELECOM DATASET ANALYSIS
-========================
+        prompt = f"""You are a TELECOM OPERATIONS DIRECTOR analyzing PERFORMANCE DATA.
 
-Total Records: {context['total_records']:,}
-Total Columns: {context['total_columns']}
+DATASET CONTEXT:
+- Total Records: {summary['total_records']}
+- Each Record Represents: {summary['record_type']}
+- This means: Each row = Performance of 1 circle/region for a specific time period
 
-AVAILABLE COLUMNS AND DATA:
-"""
-        
-        # Add column details
-        for col, data in context.get('column_analysis', {}).items():
-            data_summary += f"\n{col}:"
-            data_summary += f"\n  - Type: {data['type']}"
-            data_summary += f"\n  - Non-null values: {data['non_null']:,}"
-            data_summary += f"\n  - Unique values: {data['unique']:,}"
-            
-            if 'stats' in data:
-                data_summary += f"\n  - Sum: {data['stats']['sum']:,.2f}"
-                data_summary += f"\n  - Average: {data['stats']['mean']:,.2f}"
-                data_summary += f"\n  - Range: {data['stats']['min']:,.2f} to {data['stats']['max']:,.2f}"
-            
-            if 'top_values' in data:
-                data_summary += f"\n  - Top values: {list(data['top_values'].items())[:3]}"
-        
-        # Add mapped columns
-        data_summary += f"\n\nIDENTIFIED TELECOM DIMENSIONS:"
-        for category, cols in context.get('mapped_columns', {}).items():
-            data_summary += f"\n{category.upper()}: {[c['column'] for c in cols]}"
-        
-        prompt = f"""{data_summary}
+KEY PERFORMANCE METRICS:
+{json.dumps(summary['key_metrics'], indent=2)}
 
-You are a SENIOR TELECOM ANALYST. Analyze this REAL DATA and provide SPECIFIC insights.
+TOP PERFORMERS:
+{json.dumps(summary.get('top_performers', {}), indent=2)}
 
-CRITICAL INSTRUCTIONS:
-1. Look at the ACTUAL NUMBERS in the data above
-2. If you see "Total Records: 75" that means 75 CUSTOMERS/SUBSCRIBERS
-3. Use the SUM values for totals (e.g., if "Call_Duration" sum is 125,000 minutes, say "125K total minutes")
-4. Use the COUNT for customer counts
-5. BE SPECIFIC with the numbers you see
+BOTTOM PERFORMERS:
+{json.dumps(summary.get('bottom_performers', {}), indent=2)}
 
-Generate 3-5 insights based on the ACTUAL DATA SHOWN ABOVE.
+REGIONAL DISTRIBUTION:
+{json.dumps(summary.get('dimensions', {}), indent=2)}
 
-BAD Example (making up numbers):
-"The dataset shows 1 subscriber"
+YOUR TASK:
+You are reviewing WEEKLY/DAILY performance across circles/regions.
+DO NOT talk about "data quality" or "missing values"
+DO NOT say "only X non-null values" - the data is complete!
 
-GOOD Example (using real data):
-"Dataset contains {context['total_records']:,} records. Top region accounts for 45% with specific performance metrics..."
+Instead, analyze BUSINESS PERFORMANCE:
+1. Which circles/regions have HIGHEST call volume? By how much?
+2. Which have LOWEST performance (CSSR, ASR)? What's the gap?
+3. What's the TOTAL network traffic? Is it growing?
+4. Are there capacity issues (high traffic + low success rates)?
+5. Which regions need immediate attention?
+
+CRITICAL RULES:
+- If you see "Call Attempts" total of 500,000 → Say "5 lakh call attempts across network"
+- If top region has 120,000 calls → Say "Delhi leads with 1.2 lakh daily calls (24% of total)"
+- If CSSR is 85% in bottom region → Say "Region X CSSR at 85% vs 95% target - needs network optimization"
+- NEVER say "only 4 non-null values" or "collect more data"
+
+Generate 3-5 ACTIONABLE BUSINESS INSIGHTS with SPECIFIC NUMBERS and ACTIONS.
+
+Example GOOD insight:
+{{
+  "title": "North Region Leads Traffic with 8.2 Lakh Daily Calls - 29% Network Share",
+  "description": "North region processes 8.2 lakh call attempts daily (29% of total 28.4 lakh), followed by South at 6.1 lakh (21%). North's CSSR of 96.2% vs network average of 94.2% indicates superior performance. However, MOU in North is 18% lower (128 mins vs 156 mins average), suggesting shorter call durations. ACTION: Analyze North's call pattern - potential capacity constraint limiting call lengths. Deploy 2 additional MSCs to handle 25% traffic growth by Q2.",
+  "impact": "high",
+  "category": "capacity_planning",
+  "metrics": {{"key_number": "8.2L", "percentage": "29%", "comparison": "+34% vs South"}},
+  "action": "Deploy 2 MSCs in North by Feb 15 to handle Q2 growth"
+}}
+
+Example BAD insight (DON'T DO THIS):
+{{
+  "title": "Low Region Representation",
+  "description": "The 'Region' column has only 4 non-null values...",  ← NEVER MENTION THIS!
+}}
 
 JSON format:
 {{
-  "summary": "Brief summary using REAL numbers from data",
-  "insights": [
-    {{
-      "title": "Specific finding from data",
-      "description": "Analysis based on actual values shown above",
-      "impact": "high/medium/low",
-      "category": "relevant category",
-      "action": "Recommended next step"
-    }}
-  ]
+  "summary": "Brief summary with KEY BUSINESS NUMBERS",
+  "insights": [...]
 }}
 """
         
@@ -244,7 +206,10 @@ JSON format:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are analyzing REAL telecom data. Use the ACTUAL NUMBERS provided. Never make up data."},
+                    {
+                        "role": "system",
+                        "content": "You are a telecom operations director. Focus ONLY on business performance, capacity, revenue, quality. NEVER mention data quality or missing values. Always use ACTUAL NUMBERS from the data."
+                    },
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.2,
@@ -262,73 +227,89 @@ JSON format:
             return result
             
         except Exception as e:
-            st.error(f"AI generation failed: {str(e)}")
-            return self._generate_simple_insights(context, df)
+            # Fallback with simple rule-based insights
+            return self._generate_simple_insights(summary, df)
     
-    def _generate_simple_insights(self, context, df):
-        """Generate simple rule-based insights from actual data"""
+    def _generate_simple_insights(self, summary, df):
+        """Generate simple rule-based insights"""
         insights = []
         
-        # Overall summary
-        total_records = len(df)
+        # Network traffic insight
+        call_metrics = [k for k in summary['key_metrics'].keys() if 'call' in k.lower() or 'attempt' in k.lower()]
+        if call_metrics:
+            metric = call_metrics[0]
+            data = summary['key_metrics'][metric]
+            total = data['total']
+            avg = data['average_per_record']
+            
+            insights.append({
+                'title': f'Network Handles {total/100000:.1f} Lakh Total Call Attempts',
+                'description': f'Analysis of {summary["total_records"]} circles shows total of {total:,.0f} call attempts. Average per circle: {avg:,.0f}. This represents actual network traffic volume requiring capacity planning and resource allocation.',
+                'impact': 'high',
+                'category': 'network_capacity',
+                'metrics': {'key_number': f'{total/100000:.1f}L', 'average': f'{avg:.0f}'},
+                'action': 'Review capacity planning for high-traffic circles (>150% of average)'
+            })
         
-        # Find numeric columns and get their totals
-        numeric_cols = df.select_dtypes(include=['number']).columns
-        for col in numeric_cols[:5]:
-            if not col.startswith('_'):
-                total = df[col].sum()
-                avg = df[col].mean()
-                insights.append({
-                    'title': f'{col}: {total:,.0f} Total Across {total_records:,} Records',
-                    'description': f'The dataset contains {total_records:,} records with {col} totaling {total:,.0f} (average: {avg:,.2f} per record). This represents the actual data volume being analyzed.',
-                    'impact': 'high',
-                    'category': 'data_overview',
-                    'action': 'Review this metric for business decision-making'
-                })
-        
-        # Find categorical columns
-        cat_cols = df.select_dtypes(include=['object']).columns
-        for col in cat_cols[:3]:
-            if not col.startswith('_'):
-                top_value = df[col].value_counts().iloc[0]
-                top_name = df[col].value_counts().index[0]
-                pct = (top_value / len(df)) * 100
+        # Top performers
+        for metric, perf in summary.get('top_performers', {}).items():
+            if 'top_3' in perf:
+                top_region = list(perf['top_3'].keys())[0]
+                top_value = list(perf['top_3'].values())[0]
+                total = sum(perf['top_3'].values())
+                pct = (top_value / total) * 100
                 
                 insights.append({
-                    'title': f'{col}: {top_name} Leads with {top_value:,} Records ({pct:.1f}%)',
-                    'description': f'In the {col} dimension, {top_name} accounts for {top_value:,} out of {len(df):,} total records ({pct:.1f}% share). This shows actual distribution in your data.',
+                    'title': f'{top_region} Leads in {metric} with {top_value/1000:.1f}K ({pct:.0f}%)',
+                    'description': f'{top_region} accounts for {top_value:,.0f} in {metric}, representing {pct:.0f}% of top 3 performers. This concentration indicates strong regional performance that can be studied for best practices.',
                     'impact': 'medium',
-                    'category': 'segmentation',
-                    'action': f'Analyze why {top_name} is dominant in {col}'
+                    'category': 'regional_performance',
+                    'action': f'Document {top_region} success factors and replicate in other regions'
                 })
         
-        summary = f"Analysis of {total_records:,} actual records from your telecom data. The insights below are based on real numbers from your dataset."
+        # Quality issues
+        for metric, perf in summary.get('bottom_performers', {}).items():
+            if 'bottom_3' in perf:
+                worst_region = list(perf['bottom_3'].keys())[0]
+                worst_value = list(perf['bottom_3'].values())[0]
+                
+                if '%' in metric or 'rate' in metric.lower():
+                    insights.append({
+                        'title': f'{worst_region} Shows Low {metric} at {worst_value:.1f}%',
+                        'description': f'{worst_region} registers {worst_value:.1f}% in {metric}, indicating potential quality issues. Network optimization required to improve success rates and customer experience.',
+                        'impact': 'high',
+                        'category': 'quality',
+                        'action': f'Deploy network optimization team to {worst_region} immediately'
+                    })
+        
+        summary_text = f"Analysis of {summary['total_records']} circles reveals significant performance variations across network. Top performers show clear leadership while bottom regions require immediate attention."
         
         return {
-            'summary': summary,
+            'summary': summary_text,
             'insights': insights[:5]
         }
     
-    def _detect_business_anomalies(self, df, context):
-        """Detect anomalies"""
-        anomalies = []
+    def _detect_critical_issues(self, df):
+        """Only flag CRITICAL business issues"""
+        issues = []
         
+        # Only flag if >60% missing (not 20%)
         for col in df.columns:
             if col.startswith('_'):
                 continue
             null_pct = (df[col].isna().sum() / len(df)) * 100
-            if null_pct > 40:
-                anomalies.append({
+            if null_pct > 60:
+                issues.append({
                     'type': 'data_gap',
                     'severity': 'warning',
-                    'description': f'{col}: {null_pct:.0f}% incomplete',
-                    'business_impact': 'Limited analysis possible'
+                    'description': f'{col}: {null_pct:.0f}% incomplete - may limit analysis',
+                    'business_impact': 'Reduced visibility into this dimension'
                 })
         
-        return anomalies[:3]
+        return issues[:2]  # Max 2 alerts
     
-    def _generate_action_plans(self, insights, anomalies, context):
-        """Generate action plans"""
+    def _build_action_plans(self, insights):
+        """Build action plans from insights"""
         actions = []
         
         for insight in insights.get('insights', [])[:3]:

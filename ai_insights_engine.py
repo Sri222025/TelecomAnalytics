@@ -261,7 +261,7 @@ def _generate_executive_summary(df: pd.DataFrame, metrics: Dict, problems: List[
     # Call volume
     if metrics["call_volume"]:
         col = metrics["call_volume"][0]
-        if col in df.columns:
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
             total_calls = df[col].sum()
             if total_calls > 100000:
                 summary_parts.append(f"Total daily call attempts: **{total_calls/100000:.1f} lakh** across network.")
@@ -271,7 +271,7 @@ def _generate_executive_summary(df: pd.DataFrame, metrics: Dict, problems: List[
     # Quality performance
     if metrics["quality"]:
         col = metrics["quality"][0]
-        if col in df.columns:
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
             avg_quality = df[col].mean()
             min_quality = df[col].min()
             summary_parts.append(

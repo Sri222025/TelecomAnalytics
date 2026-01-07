@@ -802,7 +802,7 @@ def _generate_telecom_business_insights(df: pd.DataFrame, circle_analysis: Dict,
                                 f"**Strategy**: Analyze top-performing circle's activation strategy. "
                                 f"**Action**: Deploy similar approach to circles below {mean_val - std_val:.1f}%. "
                                 f"**Target**: Achieve {mean_val + 2:.1f}% average within 90 days. "
-                                f"**Expected Impact**: +{len(df) * (mean_val + 2 - mean_val) / 100):.0f} additional activations."
+                                f"**Expected Impact**: +{len(df) * (mean_val + 2 - mean_val) / 100:.0f} additional activations."
                             )
                         })
                     else:

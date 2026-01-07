@@ -50,13 +50,14 @@ class DataMerger:
                 for col in common_cols:
                     # Check if it's a good merge key
                     if self._is_good_merge_key(df1['df'], df2['df'], col):
+                        match_rate = self._calculate_match_rate(df1['df'], df2['df'], col)
                         relationships.append({
                             'file1': df1['file'],
                             'sheet1': df1['sheet'],
                             'file2': df2['file'],
                             'sheet2': df2['sheet'],
                             'key_column': col,
-                            'match_rate': self._calculate_match_rate(df1['df'], df2['df'], col)
+                            'match_rate': match_rate
                         })
         
         # Sort by match rate
@@ -91,8 +92,8 @@ class DataMerger:
             return False
         
         # Not too many nulls (< 50%)
-        null_pct1 = df1[col].isna().sum() / len(df1)
-        null_pct2 = df2[col].isna().sum() / len(df2)
+        null_pct1 = df1[col].isna().sum() / len(df1) if len(df1) > 0 else 1.0
+        null_pct2 = df2[col].isna().sum() / len(df2) if len(df2) > 0 else 1.0
         
         if null_pct1 > 0.5 or null_pct2 > 0.5:
             return False
@@ -101,16 +102,19 @@ class DataMerger:
     
     def _calculate_match_rate(self, df1, df2, col):
         """Calculate percentage of matching values"""
-        values1 = set(df1[col].dropna().astype(str))
-        values2 = set(df2[col].dropna().astype(str))
-        
-        if not values1 or not values2:
+        try:
+            values1 = set(df1[col].dropna().astype(str).str.strip().str.lower())
+            values2 = set(df2[col].dropna().astype(str).str.strip().str.lower())
+            
+            if not values1 or not values2:
+                return 0.0
+            
+            intersection = len(values1 & values2)
+            union = len(values1 | values2)
+            
+            return (intersection / union) * 100 if union > 0 else 0.0
+        except Exception:
             return 0.0
-        
-        intersection = len(values1 & values2)
-        union = len(values1 | values2)
-        
-        return (intersection / union) * 100 if union > 0 else 0.0
     
     def merge_files(self, processed_files, relationships=None):
         """
@@ -118,7 +122,7 @@ class DataMerger:
         If no relationships, concatenate all data
         """
         if len(processed_files) == 0:
-            return None, "No files to merge"
+            return pd.DataFrame(), {"error": "No files to merge"}
         
         if len(processed_files) == 1:
             # Single file - just concatenate sheets
@@ -137,6 +141,9 @@ class DataMerger:
         
         for sheet in file_info['sheets']:
             all_data.append(sheet['data'])
+        
+        if not all_data:
+            return pd.DataFrame(), {"error": "No data in file"}
         
         merged = pd.concat(all_data, ignore_index=True)
         
@@ -157,8 +164,12 @@ class DataMerger:
         
         for file_info in processed_files:
             for sheet in file_info['sheets']:
-                all_data.append(sheet['data'])
-                total_sheets += 1
+                if len(sheet['data']) > 0:
+                    all_data.append(sheet['data'])
+                    total_sheets += 1
+        
+        if not all_data:
+            return pd.DataFrame(), {"error": "No data to concatenate"}
         
         # Concatenate with outer join to keep all columns
         merged = pd.concat(all_data, ignore_index=True, sort=False)
@@ -180,11 +191,15 @@ class DataMerger:
         all_dfs = []
         for file_info in processed_files:
             for sheet in file_info['sheets']:
-                all_dfs.append({
-                    'file': file_info['file_name'],
-                    'sheet': sheet['sheet_name'],
-                    'df': sheet['data']
-                })
+                if len(sheet['data']) > 0:
+                    all_dfs.append({
+                        'file': file_info['file_name'],
+                        'sheet': sheet['sheet_name'],
+                        'df': sheet['data']
+                    })
+        
+        if not all_dfs:
+            return pd.DataFrame(), {"error": "No data to merge"}
         
         # Use the best relationship
         best_rel = relationships[0]
@@ -196,7 +211,7 @@ class DataMerger:
                 df_info['df'][merge_key] = df_info['df'][merge_key].astype(str).str.strip()
         
         # Merge all dataframes on the common key
-        merged = all_dfs[0]['df']
+        merged = all_dfs[0]['df'].copy()
         
         for i in range(1, len(all_dfs)):
             try:
@@ -226,10 +241,15 @@ class DataMerger:
     
     def get_merge_preview(self, merged_df, summary):
         """Generate a preview of merged data"""
+        if merged_df is None or len(merged_df) == 0:
+            return {
+                'error': 'No data available for preview'
+            }
+        
         preview = {
             'total_records': len(merged_df),
             'total_columns': len(merged_df.columns),
-            'method': summary['method'],
+            'method': summary.get('method', 'unknown'),
             'sample_data': merged_df.head(5).to_dict('records'),
             'column_list': [col for col in merged_df.columns if not col.startswith('_')],
             'data_quality': {
@@ -240,3 +260,4 @@ class DataMerger:
         }
         
         return preview
+

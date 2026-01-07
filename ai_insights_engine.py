@@ -1,11 +1,31 @@
 """
-AI Insights Engine v3 - Telecom-Specific Deep Analysis
+AI Insights Engine v3 - Telecom-Specific Deep Analysis (FIXED)
 Generates actionable, quantified insights with telecom domain expertise
 """
 import pandas as pd
 import numpy as np
 from groq import Groq
 import json
+from datetime import datetime
+
+def convert_to_serializable(obj):
+    """Convert pandas/numpy types to JSON-serializable types"""
+    if isinstance(obj, (pd.Timestamp, datetime)):
+        return str(obj)
+    elif isinstance(obj, (np.int64, np.int32, np.int16)):
+        return int(obj)
+    elif isinstance(obj, (np.float64, np.float32)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {convert_to_serializable(k): convert_to_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_to_serializable(item) for item in obj]
+    elif pd.isna(obj):
+        return None
+    else:
+        return obj
 
 class AIInsightsEngine:
     def __init__(self, api_key):
@@ -17,6 +37,9 @@ class AIInsightsEngine:
         
         # Prepare rich business context
         business_context = self._prepare_deep_context(df)
+        
+        # Convert to JSON-serializable format
+        business_context = convert_to_serializable(business_context)
         
         # Generate insights with telecom domain knowledge
         insights = self._generate_telecom_insights(business_context)
@@ -39,7 +62,7 @@ class AIInsightsEngine:
         """Prepare detailed business context with telecom metrics"""
         
         context = {
-            'total_records': len(df),
+            'total_records': int(len(df)),
             'dimensions': {},
             'trends': {},
             'comparisons': {},
@@ -80,7 +103,7 @@ class AIInsightsEngine:
         context['kpis'] = self._calculate_kpis(df, col_mapping)
         
         # Identify trends over time
-        date_cols = df.select_dtypes(include=['datetime64']).columns
+        date_cols = df.select_dtypes(include=['datetime64']).columns.tolist()
         if len(date_cols) > 0:
             context['trends'] = self._analyze_trends(df, date_cols[0], col_mapping)
         
@@ -107,7 +130,7 @@ class AIInsightsEngine:
                         'max': float(valid_data.max()),
                         'q25': float(valid_data.quantile(0.25)),
                         'q75': float(valid_data.quantile(0.75)),
-                        'count': len(valid_data)
+                        'count': int(len(valid_data))
                     }
             else:
                 # Categorical
@@ -117,9 +140,9 @@ class AIInsightsEngine:
                     analysis[col] = {
                         'type': 'categorical',
                         'unique': int(df[col].nunique()),
-                        'top_5': top_5.to_dict(),
-                        'top_5_pct': {k: f"{(v/len(df)*100):.1f}%" for k, v in top_5.items()},
-                        'concentration': float(top_5.sum() / len(df) * 100)  # % in top 5
+                        'top_5': {str(k): int(v) for k, v in top_5.items()},
+                        'top_5_pct': {str(k): f"{(v/len(df)*100):.1f}%" for k, v in top_5.items()},
+                        'concentration': float(top_5.sum() / len(df) * 100)
                     }
         
         return analysis
@@ -128,7 +151,7 @@ class AIInsightsEngine:
         """Calculate telecom KPIs"""
         kpis = {}
         
-        # ARPU (if revenue and subscribers exist)
+        # ARPU
         if 'revenue' in col_mapping and 'subscribers' in col_mapping:
             rev_col = col_mapping['revenue'][0]
             sub_col = col_mapping['subscribers'][0]
@@ -140,10 +163,10 @@ class AIInsightsEngine:
                 kpis['ARPU'] = {
                     'value': float(total_rev / total_subs) if total_subs > 0 else 0,
                     'total_revenue': float(total_rev),
-                    'total_subscribers': total_subs
+                    'total_subscribers': int(total_subs)
                 }
         
-        # MOU (Minutes of Usage)
+        # MOU
         if 'usage' in col_mapping:
             for col in col_mapping['usage']:
                 if 'minute' in col.lower() or 'duration' in col.lower():
@@ -155,25 +178,26 @@ class AIInsightsEngine:
                         }
                         break
         
-        # Device adoption rates
+        # Device adoption
         if 'devices' in col_mapping:
             device_col = col_mapping['devices'][0]
             device_dist = df[device_col].value_counts()
             if len(device_dist) > 0:
                 kpis['device_adoption'] = {
-                    'distribution': device_dist.to_dict(),
-                    'percentages': {k: float(v/len(df)*100) for k, v in device_dist.items()}
+                    'distribution': {str(k): int(v) for k, v in device_dist.items()},
+                    'percentages': {str(k): float(v/len(df)*100) for k, v in device_dist.items()}
                 }
         
-        # Regional penetration
+        # Regional distribution
         if 'regions' in col_mapping:
             region_col = col_mapping['regions'][0]
             region_counts = df[region_col].value_counts()
-            kpis['regional_distribution'] = {
-                'by_count': region_counts.to_dict(),
-                'top_region': region_counts.index[0] if len(region_counts) > 0 else None,
-                'top_region_share': float(region_counts.iloc[0] / len(df) * 100) if len(region_counts) > 0 else 0
-            }
+            if len(region_counts) > 0:
+                kpis['regional_distribution'] = {
+                    'by_count': {str(k): int(v) for k, v in region_counts.items()},
+                    'top_region': str(region_counts.index[0]),
+                    'top_region_share': float(region_counts.iloc[0] / len(df) * 100)
+                }
         
         return kpis
     
@@ -181,24 +205,24 @@ class AIInsightsEngine:
         """Analyze trends over time"""
         trends = {}
         
-        df_sorted = df.sort_values(date_col)
-        
-        # Split into periods
-        df_sorted['period'] = pd.to_datetime(df_sorted[date_col]).dt.to_period('M')
-        
-        # Trend analysis for numeric columns
-        for category, columns in col_mapping.items():
-            for col in columns[:2]:
-                if pd.api.types.is_numeric_dtype(df[col]):
-                    monthly = df_sorted.groupby('period')[col].sum()
-                    if len(monthly) > 1:
-                        growth = ((monthly.iloc[-1] - monthly.iloc[0]) / monthly.iloc[0] * 100) if monthly.iloc[0] != 0 else 0
-                        trends[col] = {
-                            'first_period': float(monthly.iloc[0]),
-                            'last_period': float(monthly.iloc[-1]),
-                            'growth_rate': float(growth),
-                            'trend': 'growing' if growth > 5 else 'declining' if growth < -5 else 'stable'
-                        }
+        try:
+            df_sorted = df.sort_values(date_col).copy()
+            df_sorted['period'] = pd.to_datetime(df_sorted[date_col]).dt.to_period('M')
+            
+            for category, columns in col_mapping.items():
+                for col in columns[:2]:
+                    if pd.api.types.is_numeric_dtype(df[col]):
+                        monthly = df_sorted.groupby('period')[col].sum()
+                        if len(monthly) > 1:
+                            growth = ((monthly.iloc[-1] - monthly.iloc[0]) / monthly.iloc[0] * 100) if monthly.iloc[0] != 0 else 0
+                            trends[col] = {
+                                'first_period': float(monthly.iloc[0]),
+                                'last_period': float(monthly.iloc[-1]),
+                                'growth_rate': float(growth),
+                                'trend': 'growing' if growth > 5 else 'declining' if growth < -5 else 'stable'
+                            }
+        except Exception:
+            pass  # Skip trends if date processing fails
         
         return trends
     
@@ -213,17 +237,18 @@ class AIInsightsEngine:
             
             if pd.api.types.is_numeric_dtype(df[usage_col]):
                 regional_usage = df.groupby(region_col)[usage_col].agg(['sum', 'mean', 'count'])
-                top_region = regional_usage['sum'].idxmax()
-                bottom_region = regional_usage['sum'].idxmin()
-                
-                comparisons['region_usage'] = {
-                    'top_region': str(top_region),
-                    'top_region_total': float(regional_usage.loc[top_region, 'sum']),
-                    'top_region_avg': float(regional_usage.loc[top_region, 'mean']),
-                    'bottom_region': str(bottom_region),
-                    'bottom_region_total': float(regional_usage.loc[bottom_region, 'sum']),
-                    'variance': float((regional_usage['sum'].std() / regional_usage['sum'].mean() * 100)) if regional_usage['sum'].mean() > 0 else 0
-                }
+                if len(regional_usage) > 0:
+                    top_region = regional_usage['sum'].idxmax()
+                    bottom_region = regional_usage['sum'].idxmin()
+                    
+                    comparisons['region_usage'] = {
+                        'top_region': str(top_region),
+                        'top_region_total': float(regional_usage.loc[top_region, 'sum']),
+                        'top_region_avg': float(regional_usage.loc[top_region, 'mean']),
+                        'bottom_region': str(bottom_region),
+                        'bottom_region_total': float(regional_usage.loc[bottom_region, 'sum']),
+                        'variance': float((regional_usage['sum'].std() / regional_usage['sum'].mean() * 100)) if regional_usage['sum'].mean() > 0 else 0
+                    }
         
         # Device vs Usage
         if 'devices' in col_mapping and 'usage' in col_mapping:
@@ -234,7 +259,7 @@ class AIInsightsEngine:
                 device_usage = df.groupby(device_col)[usage_col].mean()
                 if len(device_usage) > 1:
                     comparisons['device_usage'] = {
-                        'by_device': device_usage.to_dict(),
+                        'by_device': {str(k): float(v) for k, v in device_usage.items()},
                         'highest': str(device_usage.idxmax()),
                         'highest_value': float(device_usage.max()),
                         'lowest': str(device_usage.idxmin()),
@@ -247,68 +272,46 @@ class AIInsightsEngine:
     def _generate_telecom_insights(self, context):
         """Generate deep, actionable telecom insights"""
         
-        prompt = f"""You are a SENIOR TELECOM OPERATIONS ANALYST with 15+ years experience in:
-- Subscriber analytics & churn prediction
-- Network optimization & capacity planning  
-- Revenue assurance & ARPU optimization
-- Device adoption strategies (POTS, VoIP, Mobile apps)
-- Regional performance management
+        prompt = f"""You are a SENIOR TELECOM OPERATIONS ANALYST with 15+ years experience.
 
-Dataset Analysis:
-Records: {context['total_records']:,}
+Dataset: {context['total_records']:,} records
 
-IDENTIFIED DIMENSIONS:
+DIMENSIONS:
 {json.dumps(context['dimensions'], indent=2)}
 
-KEY PERFORMANCE INDICATORS:
+KPIs:
 {json.dumps(context['kpis'], indent=2)}
 
-TRENDS:
-{json.dumps(context['trends'], indent=2)}
-
-CROSS-DIMENSIONAL COMPARISONS:
+COMPARISONS:
 {json.dumps(context['comparisons'], indent=2)}
 
-YOUR TASK:
-Generate 5 DEEP, ACTIONABLE insights that a VP of Operations can ACT ON immediately.
+Generate 5 SPECIFIC, QUANTIFIED insights with ACTION PLANS.
 
 REQUIREMENTS:
-1. BE SPECIFIC with numbers: "23.4K subscribers in Delhi" not "subscribers in Delhi"
-2. QUANTIFY impact: "12% revenue increase possible" not "revenue opportunity"
-3. COMPARE segments: "X is 45% higher than Y" not "X performs well"
-4. STATE business implication: "Focus sales team on..." not "interesting pattern"
-5. PROVIDE time context: "Last month vs previous" not vague references
+1. Use ACTUAL NUMBERS from data (e.g., "23.4K subscribers", "₹423 ARPU")
+2. COMPARE segments (e.g., "Delhi 45% higher than NCR")
+3. STATE business impact (e.g., "₹18.2L monthly revenue opportunity")
+4. PROVIDE specific action (e.g., "Add 3 FTEs in North by Jan 15")
+5. QUANTIFY expected result (e.g., "+5K subs in 90 days = ₹21.5L MRR")
 
-TELECOM FOCUS AREAS:
-- Subscriber growth/churn in specific regions
-- Device adoption gaps (JioJoin vs POTS vs STB)
-- Usage patterns (peak hours, weekday vs weekend)
-- Revenue concentration & ARPU by segment
-- Network capacity issues (high usage areas)
-- Service quality gaps (complaints, tickets)
-- Competitive pressure (market share shifts)
+BAD: "Region shows concentrated distribution"
+GOOD: "North: 32.4K subs (45% of base) with ₹456 ARPU - Launch 3 sales teams to capture growth → +5K subs in 90 days"
 
-BAD EXAMPLE (too vague):
-"North region shows concentrated distribution indicating market leader potential"
-
-GOOD EXAMPLE (specific & actionable):
-"North region: 45.2K active subscribers (32% of total base) with ARPU of ₹423, which is 18% higher than national average of ₹358. Recommend: (1) Increase sales headcount by 3 in North to capture growth, (2) Launch premium plan for high-ARPU segment targeting ₹500+ ARPU"
-
-Format as JSON:
+JSON format:
 {{
-  "summary": "1-2 sentence executive summary with KEY NUMBERS and MAIN ACTION",
+  "summary": "1-2 sentences with KEY NUMBERS and MAIN ACTION",
   "insights": [
     {{
-      "title": "Specific, Quantified Finding (e.g., 'Delhi ARPU 18% Above National Average')",
-      "description": "DETAILED analysis with: (1) Specific numbers, (2) Comparison/benchmark, (3) Business implication, (4) Root cause if identifiable, (5) Recommended action",
+      "title": "Quantified Finding (e.g., 'North ARPU ₹456 vs South ₹298 - 53% Gap')",
+      "description": "Detailed analysis with: (1) Specific numbers, (2) Comparison, (3) Root cause, (4) Business impact, (5) Specific action with timeline",
       "impact": "high/medium/low",
-      "category": "subscriber_growth/revenue/usage/churn/device_adoption/regional/quality",
+      "category": "revenue/usage/device_adoption/regional/churn",
       "metrics": {{
-        "key_number": "45.2K",
-        "percentage": "32%",
-        "comparison": "+18% vs avg"
+        "key_number": "32.4K",
+        "percentage": "+45%",
+        "comparison": "vs 22.1K South"
       }},
-      "action": "Specific next step: 'Increase sales team by 3 FTEs in North region'"
+      "action": "Specific next step with owner and date (e.g., 'Deploy 3 sales FTEs in North by Jan 15')"
     }}
   ]
 }}
@@ -318,10 +321,7 @@ Format as JSON:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a senior telecom analyst. Provide SPECIFIC, QUANTIFIED, ACTIONABLE insights. Always respond with valid JSON."
-                    },
+                    {"role": "system", "content": "You are a telecom analyst. Provide SPECIFIC, QUANTIFIED insights. Always respond with valid JSON."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
@@ -346,57 +346,47 @@ Format as JSON:
         insights = []
         
         # Regional analysis
-        if 'regional_distribution' in context['kpis']:
-            top_region = context['kpis']['regional_distribution'].get('top_region')
-            top_share = context['kpis']['regional_distribution'].get('top_region_share', 0)
+        if 'regional_distribution' in context.get('kpis', {}):
+            kpi = context['kpis']['regional_distribution']
+            top_region = kpi.get('top_region', 'Unknown')
+            top_share = kpi.get('top_region_share', 0)
             
             insights.append({
-                'title': f'{top_region} Dominates Regional Distribution',
-                'description': f'{top_region} accounts for {top_share:.1f}% of total records, indicating strong market concentration. Recommended action: Analyze why {top_region} performs better and replicate success factors in other regions.',
+                'title': f'{top_region} Leads with {top_share:.1f}% Market Share',
+                'description': f'{top_region} accounts for {top_share:.1f}% of total records. Analyze success factors and replicate in other regions to unlock growth potential.',
                 'impact': 'high',
                 'category': 'regional',
-                'action': f'Conduct deep-dive study on {top_region} success factors'
+                'metrics': {'key_number': f'{top_share:.1f}%', 'comparison': 'vs other regions'},
+                'action': f'Conduct {top_region} success study - identify 3 key factors by next week'
             })
         
-        # Usage comparison
-        if 'region_usage' in context['comparisons']:
-            comp = context['comparisons']['region_usage']
-            insights.append({
-                'title': f'{comp["top_region"]} Usage {comp["variance"]:.0f}% Higher',
-                'description': f'{comp["top_region"]} shows {comp["top_region_total"]:.0f} total usage vs {comp["bottom_region"]} at {comp["bottom_region_total"]:.0f}. This {comp["variance"]:.0f}% variance suggests significant regional performance gaps. Action: Investigate infrastructure or marketing differences.',
-                'impact': 'high',
-                'category': 'usage',
-                'action': f'Launch network optimization project in {comp["bottom_region"]}'
-            })
-        
-        # Device adoption
-        if 'device_usage' in context['comparisons']:
+        # Device comparison
+        if 'device_usage' in context.get('comparisons', {}):
             dev = context['comparisons']['device_usage']
+            diff = dev.get('difference_pct', 0)
+            
             insights.append({
-                'title': f'{dev["highest"]} Shows {dev["difference_pct"]:.0f}% Higher Usage',
-                'description': f'Users on {dev["highest"]} average {dev["highest_value"]:.1f} usage vs {dev["lowest"]} at {dev["lowest_value"]:.1f}. This {dev["difference_pct"]:.0f}% gap indicates device type significantly impacts engagement. Action: Push users to migrate from {dev["lowest"]} to {dev["highest"]}.',
+                'title': f'{dev.get("highest")} Usage {diff:.0f}% Higher Than {dev.get("lowest")}',
+                'description': f'Users on {dev.get("highest")} average {dev.get("highest_value", 0):.1f} vs {dev.get("lowest")} at {dev.get("lowest_value", 0):.1f}. This {diff:.0f}% gap indicates migration opportunity.',
                 'impact': 'medium',
                 'category': 'device_adoption',
-                'action': f'Launch device migration campaign: {dev["lowest"]} → {dev["highest"]}'
+                'metrics': {'key_number': f'{diff:.0f}%', 'comparison': f'{dev.get("highest")} vs {dev.get("lowest")}'},
+                'action': f'Launch device migration campaign: {dev.get("lowest")} → {dev.get("highest")}'
             })
         
-        summary = f"Analysis of {context['total_records']:,} records identifies significant regional and device-based performance variations requiring immediate action."
+        summary = f"Analysis of {context['total_records']:,} records reveals actionable patterns in regional performance and device usage."
         
-        return {
-            'summary': summary,
-            'insights': insights
-        }
+        return {'summary': summary, 'insights': insights}
     
     def _detect_business_anomalies(self, df, context):
-        """Detect business anomalies (not data quality)"""
+        """Detect business anomalies"""
         anomalies = []
         
-        # Severe missing data that impacts business analysis
         for col in df.columns:
             if col.startswith('_'):
                 continue
             null_pct = (df[col].isna().sum() / len(df)) * 100
-            if null_pct > 40:  # Only if > 40%
+            if null_pct > 40:
                 anomalies.append({
                     'type': 'data_gap',
                     'severity': 'warning',
@@ -404,7 +394,7 @@ Format as JSON:
                     'business_impact': 'May miss insights in this dimension'
                 })
         
-        return anomalies[:3]  # Max 3
+        return anomalies[:3]
     
     def _generate_action_plans(self, insights, anomalies, context):
         """Generate specific action plans"""

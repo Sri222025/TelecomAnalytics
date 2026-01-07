@@ -9,7 +9,7 @@ import traceback
 # Import our custom modules
 from file_processor import FileProcessor
 from data_merger import DataMerger
-from ai_insights_engine import AIInsightsEngine
+import ai_insights_bulletproof as ai_insights_engine
 
 # Must be FIRST Streamlit command
 st.set_page_config(
@@ -198,9 +198,12 @@ elif page == "📤 Upload & Process":
         with col1:
             if st.button("🚀 Process & Analyze", type="primary", use_container_width=True):
                 
-                # Reset AI state
+                # CLEAR ALL OLD STATE
+                st.session_state.merged_data = None
                 st.session_state.ai_insights = None
                 st.session_state.ai_error = None
+                st.session_state.processed_files = []
+                st.session_state.relationships = []
                 
                 with st.spinner("🔄 Processing files..."):
                     try:
@@ -229,23 +232,19 @@ elif page == "📤 Upload & Process":
                         
                         st.success(f"✅ Data merged: {len(merged_data):,} records")
                         
-                        # AI Analysis (if enabled)
-                        if has_groq and merged_data is not None:
-                            st.text("🤖 Running AI analysis...")
-                            try:
-                                ai_engine = AIInsightsEngine(st.secrets['GROQ_API_KEY'])
-                                insights = ai_engine.analyze_data(merged_data, merge_summary)
-                                st.session_state.ai_insights = insights
-                                st.success("✅ AI analysis complete!")
-                            except Exception as e:
-                                error_msg = f"{str(e)}\n\nFull traceback:\n{traceback.format_exc()}"
-                                st.session_state.ai_error = error_msg
-                                st.error(f"⚠️ AI analysis failed: {str(e)}")
-                                with st.expander("🔍 Error Details"):
-                                    st.code(error_msg)
-                                st.info("💡 You can still use other features (Data Explorer, Visualizations, Export)")
-                        elif not has_groq:
-                            st.warning("⚠️ AI analysis skipped - GROQ_API_KEY not found in secrets")
+                        # AI Analysis with ACTUAL DATA
+                        st.text("🤖 Running AI analysis with real statistics...")
+                        try:
+                            insights = ai_insights_engine.analyze_data(merged_data, merge_summary)
+                            st.session_state.ai_insights = insights
+                            st.success("✅ AI analysis complete with actual numbers!")
+                        except Exception as e:
+                            error_msg = f"{str(e)}\n\nFull traceback:\n{traceback.format_exc()}"
+                            st.session_state.ai_error = error_msg
+                            st.error(f"⚠️ AI analysis failed: {str(e)}")
+                            with st.expander("🔍 Error Details"):
+                                st.code(error_msg)
+                            st.info("💡 You can still use other features (Data Explorer, Visualizations, Export)")
                         
                         progress_bar.progress(1.0)
                         st.success("✅ Processing complete!")

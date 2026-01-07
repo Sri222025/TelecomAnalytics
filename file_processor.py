@@ -26,96 +26,131 @@ class FileProcessor:
     
     def _process_csv(self, file, file_name):
         """Process CSV file"""
-        df = pd.read_csv(file)
-        df = self._clean_and_fix_headers(df)
-        df = self._clean_dataframe(df)
-        df = self._detect_column_types(df)
-        
-        df['_source_file'] = file_name
-        df['_source_sheet'] = 'Sheet1'
-        
-        return {
-            'file_name': file_name,
-            'sheets': [{
-                'sheet_name': 'Sheet1',
-                'data': df,
-                'rows': len(df),
-                'columns': len(df.columns)
-            }],
-            'total_rows': len(df),
-            'total_columns': len(df.columns)
-        }
-    
-    def _process_excel(self, file, file_name):
-        """Process Excel file with multi-level header detection"""
-        excel_file = pd.ExcelFile(file)
-        sheets_data = []
-        total_rows = 0
-        all_columns = set()
-        
-        for sheet_name in excel_file.sheet_names:
-            # Try to detect header rows
-            df = self._read_excel_with_smart_headers(file, sheet_name)
+        try:
+            # Try different encodings
+            encodings = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
+            df = None
+            
+            for encoding in encodings:
+                try:
+                    file.seek(0)  # Reset file pointer
+                    df = pd.read_csv(file, encoding=encoding)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            
+            if df is None:
+                raise ValueError("Could not read CSV file with any encoding")
             
             df = self._clean_and_fix_headers(df)
             df = self._clean_dataframe(df)
             df = self._detect_column_types(df)
             
             df['_source_file'] = file_name
-            df['_source_sheet'] = sheet_name
+            df['_source_sheet'] = 'Sheet1'
             
-            sheets_data.append({
-                'sheet_name': sheet_name,
-                'data': df,
-                'rows': len(df),
-                'columns': len(df.columns)
-            })
+            return {
+                'file_name': file_name,
+                'sheets': [{
+                    'sheet_name': 'Sheet1',
+                    'data': df,
+                    'rows': len(df),
+                    'columns': len(df.columns)
+                }],
+                'total_rows': len(df),
+                'total_columns': len(df.columns)
+            }
+        except Exception as e:
+            raise ValueError(f"Error processing CSV file {file_name}: {str(e)}")
+    
+    def _process_excel(self, file, file_name):
+        """Process Excel file with multi-level header detection"""
+        try:
+            excel_file = pd.ExcelFile(file)
+            sheets_data = []
+            total_rows = 0
+            all_columns = set()
             
-            total_rows += len(df)
-            all_columns.update(df.columns)
-        
-        return {
-            'file_name': file_name,
-            'sheets': sheets_data,
-            'total_rows': total_rows,
-            'total_columns': len(all_columns),
-            'sheet_count': len(sheets_data)
-        }
+            for sheet_name in excel_file.sheet_names:
+                # Try to detect header rows
+                df = self._read_excel_with_smart_headers(file, sheet_name)
+                
+                if df is None or len(df) == 0:
+                    continue
+                
+                df = self._clean_and_fix_headers(df)
+                df = self._clean_dataframe(df)
+                df = self._detect_column_types(df)
+                
+                df['_source_file'] = file_name
+                df['_source_sheet'] = sheet_name
+                
+                sheets_data.append({
+                    'sheet_name': sheet_name,
+                    'data': df,
+                    'rows': len(df),
+                    'columns': len(df.columns)
+                })
+                
+                total_rows += len(df)
+                all_columns.update(df.columns)
+            
+            if not sheets_data:
+                raise ValueError(f"No valid data found in Excel file {file_name}")
+            
+            return {
+                'file_name': file_name,
+                'sheets': sheets_data,
+                'total_rows': total_rows,
+                'total_columns': len(all_columns),
+                'sheet_count': len(sheets_data)
+            }
+        except Exception as e:
+            raise ValueError(f"Error processing Excel file {file_name}: {str(e)}")
     
     def _read_excel_with_smart_headers(self, file, sheet_name):
         """Read Excel with multi-level header detection"""
-        
-        # Try reading first few rows to detect header structure
-        preview = pd.read_excel(file, sheet_name=sheet_name, nrows=5, header=None)
-        
-        # Detect how many header rows (look for rows with mostly text)
-        header_rows = []
-        for idx in range(min(3, len(preview))):
-            row = preview.iloc[idx]
-            # If >50% cells are non-numeric text, it's likely a header
-            text_cells = row.apply(lambda x: isinstance(x, str) and not str(x).replace('.','').replace('-','').isdigit())
-            if text_cells.sum() / len(row) > 0.5:
-                header_rows.append(idx)
+        try:
+            # Try reading first few rows to detect header structure
+            preview = pd.read_excel(file, sheet_name=sheet_name, nrows=5, header=None)
+            
+            if len(preview) == 0:
+                return pd.DataFrame()
+            
+            # Detect how many header rows (look for rows with mostly text)
+            header_rows = []
+            for idx in range(min(3, len(preview))):
+                row = preview.iloc[idx]
+                # If >50% cells are non-numeric text, it's likely a header
+                text_cells = row.apply(lambda x: isinstance(x, str) and not str(x).replace('.','').replace('-','').isdigit())
+                if text_cells.sum() / len(row) > 0.5:
+                    header_rows.append(idx)
+                else:
+                    break
+            
+            # Read with detected headers
+            if len(header_rows) > 1:
+                # Multi-level headers
+                df = pd.read_excel(file, sheet_name=sheet_name, header=header_rows)
+                # Flatten multi-level columns
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = [' '.join([str(c) for c in col if not str(c).startswith('Unnamed')]).strip() 
+                                 for col in df.columns.values]
             else:
-                break
-        
-        # Read with detected headers
-        if len(header_rows) > 1:
-            # Multi-level headers
-            df = pd.read_excel(file, sheet_name=sheet_name, header=header_rows)
-            # Flatten multi-level columns
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = [' '.join([str(c) for c in col if not str(c).startswith('Unnamed')]).strip() 
-                             for col in df.columns.values]
-        else:
-            # Single header row
-            header_row = header_rows[0] if header_rows else 0
-            df = pd.read_excel(file, sheet_name=sheet_name, header=header_row)
-        
-        return df
+                # Single header row
+                header_row = header_rows[0] if header_rows else 0
+                df = pd.read_excel(file, sheet_name=sheet_name, header=header_row)
+            
+            return df
+        except Exception as e:
+            print(f"Warning: Error reading sheet {sheet_name}: {str(e)}")
+            return pd.DataFrame()
     
     def _clean_and_fix_headers(self, df):
         """Clean and fix column headers, especially 'Unnamed' columns"""
+        
+        if len(df.columns) == 0:
+            return df
         
         new_columns = []
         last_valid_name = ""
@@ -125,7 +160,7 @@ class FileProcessor:
             col_str = str(col).strip()
             
             # If it's an "Unnamed" column
-            if col_str.startswith('Unnamed'):
+            if col_str.startswith('Unnamed') or col_str == 'nan' or col_str == '':
                 # Try to infer from nearby columns or data
                 col_idx = df.columns.get_loc(col)
                 
@@ -173,6 +208,9 @@ class FileProcessor:
     
     def _clean_dataframe(self, df):
         """Clean and standardize dataframe"""
+        
+        if len(df) == 0:
+            return df
         
         # Remove rows that are actually headers (common in telecom reports)
         # If first row has column names repeated, remove it
@@ -291,3 +329,4 @@ class FileProcessor:
             })
         
         return metadata
+

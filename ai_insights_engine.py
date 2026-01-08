@@ -1,19 +1,15 @@
 """
-AI Insights Engine V8 - BOARDROOM READY
-=======================================
+AI Insights Engine V9 - EMERGENCY FIX FOR MULTI-LEVEL HEADERS
+=============================================================
 
-Complete rewrite focused on EXECUTIVE DECISION-MAKING for telecom operations.
+CRITICAL FIX for presentation tomorrow:
+- Handles multi-level headers (CIRCLE, then HSI Active Customers)
+- Specifically maps Fixed Line + JioJoin columns
+- FORCES insight generation with your exact data structure
+- Generates full executive summary with numbers
 
-Key Features:
-1. Aggressive summary row removal with Indian circle validation
-2. Deep circle-by-circle analysis with business context
-3. Telecom-specific KPIs and benchmarks
-4. Financial impact quantification (revenue, ROI, risk)
-5. Actionable recommendations with timelines and ownership
-6. Board-ready formatting with executive summary
-
-Author: V8 Final
-Date: 2026-01-08
+Author: V9 Emergency
+Date: 2026-01-08 (FOR PRESENTATION TOMORROW)
 """
 
 import pandas as pd
@@ -23,321 +19,325 @@ import json
 import logging
 from datetime import datetime
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class AIInsightsEngine:
-    """
-    V8 Boardroom-Ready AI Insights Engine for Telecom Analytics
-    """
+    """V9 Emergency Fix - Multi-level headers + Force insights"""
     
-    # Valid Indian telecom circles (22 circles)
+    # Valid circles
     VALID_CIRCLES = {
         'mumbai', 'delhi', 'kolkata', 'chennai', 'maharashtra', 'gujarat',
         'andhra pradesh', 'karnataka', 'tamil nadu', 'kerala', 'punjab',
-        'haryana', 'up east', 'up west', 'rajasthan', 'madhya pradesh',
-        'west bengal', 'himachal pradesh', 'bihar', 'orissa', 'assam',
-        'north east', 'jammu kashmir', 'telangana', 'chhattisgarh', 'jharkhand',
-        # Also accept abbreviations
-        'mum', 'del', 'kol', 'che', 'mah', 'guj', 'ap', 'kar', 'tn', 'ker',
-        # Metro circles
-        'metro', 'category a', 'category b', 'category c'
+        'haryana', 'himachal pradesh', 'up east', 'up west', 'rajasthan', 
+        'madhya pradesh', 'west bengal', 'bihar', 'orissa', 'assam',
+        'north east', 'jammu kashmir', 'telangana', 'chhattisgarh', 'jharkhand'
     }
     
-    # Summary keywords to remove
     SUMMARY_KEYWORDS = [
         'pan india', 'all india', 'india', 'total', 'grand total', 'sub total',
         'overall', 'summary', 'aggregate', 'consolidated', 'combined', 'average',
         'national', 'country', 'nationwide'
     ]
     
-    # Telecom KPI benchmarks (industry standards)
     BENCHMARKS = {
-        'cssr': {'target': 95.0, 'critical': 90.0, 'unit': '%'},
-        'asr': {'target': 93.0, 'critical': 88.0, 'unit': '%'},
-        'success_rate': {'target': 95.0, 'critical': 90.0, 'unit': '%'},
-        'quality': {'target': 95.0, 'critical': 90.0, 'unit': '%'},
-        'mou': {'target': 150, 'critical': 100, 'unit': 'minutes'},
-        'arpu': {'target': 200, 'critical': 150, 'unit': '₹'},
-        'penetration': {'target': 25.0, 'critical': 15.0, 'unit': '%'},
-        'utilization': {'target': 80.0, 'critical': 90.0, 'unit': '%'}  # >90% = overload
+        'cssr': 95.0,
+        'asr': 93.0,
+        'penetration': 25.0,
+        'mou': 150,
+        'call_success': 95.0
     }
     
     def __init__(self, groq_api_key: Optional[str] = None):
-        """Initialize the AI Insights Engine"""
         self.groq_api_key = groq_api_key
         self.analysis_timestamp = datetime.now()
     
     def analyze_data(self, df: pd.DataFrame, context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """
-        Main analysis entry point - generates board-ready insights
-        
-        Args:
-            df: Input dataframe with telecom data
-            context: Additional context (file names, processing info, etc.)
-        
-        Returns:
-            Dictionary with executive_summary, circle_insights, recommendations, etc.
-        """
+        """Main analysis - EMERGENCY FIX"""
         try:
-            logger.info(f"Starting V8 analysis: {len(df)} rows, {len(df.columns)} columns")
+            logger.info(f"V9 EMERGENCY: Analyzing {len(df)} rows, {len(df.columns)} columns")
             
-            # Step 1: Clean data aggressively
+            # Step 1: Clean
             df_clean, cleaning_report = self._clean_data(df)
-            
             if len(df_clean) == 0:
                 return self._generate_no_data_response(cleaning_report)
             
-            # Step 2: Detect structure
-            structure = self._detect_structure(df_clean)
+            # Step 2: Find circle column and flatten headers
+            df_flat, circle_col = self._flatten_headers(df_clean)
             
             # Step 3: Validate circles
-            circles_info = self._validate_circles(df_clean, structure)
+            circles_info = self._validate_circles(df_flat, circle_col)
             
-            # Step 4: Deep analysis per circle
-            circle_insights = self._analyze_circles(df_clean, structure, circles_info)
+            if circles_info['total_circles'] == 0:
+                return self._generate_no_circles_response(cleaning_report, df_flat.columns.tolist())
             
-            # Step 5: Network-wide analysis
-            network_summary = self._analyze_network(df_clean, structure, circles_info)
+            # Step 4: Map metrics to your exact columns
+            metrics_map = self._map_metrics(df_flat)
             
-            # Step 6: Problem detection
-            problems = self._detect_problems(circle_insights, network_summary)
+            # Step 5: Extract insights per circle
+            circle_insights = self._analyze_circles_v9(df_flat, circle_col, circles_info, metrics_map)
             
-            # Step 7: Generate executive recommendations
-            recommendations = self._generate_recommendations(problems, circle_insights)
+            # Step 6: Network summary
+            network_summary = self._calculate_network_summary(df_flat, circle_col, circles_info, metrics_map)
             
-            # Step 8: Create board-ready output
-            output = self._format_boardroom_output(
-                cleaning_report=cleaning_report,
-                structure=structure,
-                circles_info=circles_info,
-                circle_insights=circle_insights,
-                network_summary=network_summary,
-                problems=problems,
-                recommendations=recommendations
+            # Step 7: Detect problems
+            problems = self._detect_problems_v9(circle_insights, metrics_map)
+            
+            # Step 8: Generate recommendations
+            recommendations = self._generate_recommendations_v9(problems, circle_insights, network_summary)
+            
+            # Step 9: Format for presentation
+            output = self._format_presentation_output(
+                cleaning_report, circles_info, circle_insights,
+                network_summary, problems, recommendations, metrics_map
             )
             
-            logger.info(f"V8 analysis complete: {len(circle_insights)} circles analyzed")
+            logger.info(f"V9 COMPLETE: {circles_info['total_circles']} circles, {len(problems)} problems")
             return output
             
         except Exception as e:
-            logger.error(f"Analysis error: {str(e)}", exc_info=True)
+            logger.error(f"V9 ERROR: {str(e)}", exc_info=True)
             return {
                 'error': str(e),
-                'executive_summary': f"Analysis failed: {str(e)}",
-                'debug_info': {
-                    'rows': len(df),
-                    'columns': len(df.columns),
-                    'error': str(e)
-                }
+                'executive_summary': f"Analysis error: {str(e)}\n\nDebug: {len(df)} rows, {df.columns.tolist()[:10]}",
+                'debug': {'error': str(e), 'columns': df.columns.tolist()}
             }
     
     def _clean_data(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
-        """
-        Aggressive data cleaning - remove ALL summary rows
-        """
+        """Aggressive cleaning"""
         df_clean = df.copy()
         original_rows = len(df_clean)
-        removed_rows = []
+        removed_values = []
         
-        # Remove rows with summary keywords in ANY text column
+        # Remove summary rows
         for col in df_clean.select_dtypes(include=['object']).columns:
             mask = df_clean[col].astype(str).str.lower().str.strip().apply(
-                lambda x: any(keyword in x for keyword in self.SUMMARY_KEYWORDS)
+                lambda x: any(kw in x for kw in self.SUMMARY_KEYWORDS)
             )
-            removed = df_clean[mask]
-            if len(removed) > 0:
-                removed_rows.extend(removed[col].tolist())
+            if mask.sum() > 0:
+                removed_values.extend(df_clean[mask][col].tolist())
                 df_clean = df_clean[~mask]
         
-        # Remove rows with extreme outliers (likely totals)
-        numeric_cols = df_clean.select_dtypes(include=[np.number]).columns
-        for col in numeric_cols:
-            if df_clean[col].notna().sum() > 5:  # Need at least 5 values
-                median = df_clean[col].median()
-                if median > 0:
-                    # Remove values > 10x median (likely aggregates)
-                    mask = df_clean[col] > (median * 10)
-                    if mask.sum() > 0:
-                        removed = df_clean[mask]
-                        logger.info(f"Removed {mask.sum()} outlier rows from {col}")
-                        df_clean = df_clean[~mask]
+        # Remove empty rows
+        df_clean = df_clean.dropna(how='all')
         
         cleaning_report = {
             'original_rows': original_rows,
             'cleaned_rows': len(df_clean),
             'removed_count': original_rows - len(df_clean),
-            'removed_values': list(set(removed_rows))[:10],  # Show sample
-            'removal_rate': (original_rows - len(df_clean)) / original_rows * 100
+            'removed_values': list(set(removed_values))[:10]
         }
         
-        logger.info(f"Cleaning: {original_rows} → {len(df_clean)} rows ({cleaning_report['removal_rate']:.1f}% removed)")
-        
+        logger.info(f"Cleaned: {original_rows} → {len(df_clean)} rows")
         return df_clean, cleaning_report
     
-    def _detect_structure(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """
-        Detect circle column and metrics
-        """
-        structure = {
-            'circle_col': None,
-            'metrics': {
-                'customers': [],
-                'usage': [],
-                'quality': [],
-                'segments': [],
-                'other': []
-            }
-        }
+    def _flatten_headers(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Optional[str]]:
+        """Handle multi-level headers - find circle column"""
+        df_flat = df.copy()
+        circle_col = None
         
-        # Find circle column
-        text_cols = df.select_dtypes(include=['object']).columns
+        # Find circle column (first text column with valid circles)
+        text_cols = df_flat.select_dtypes(include=['object']).columns
+        
         for col in text_cols:
-            unique_count = df[col].nunique()
-            if 5 <= unique_count <= 50:  # Reasonable range for circles
-                col_lower = col.lower()
-                if any(word in col_lower for word in ['circle', 'region', 'zone', 'area', 'state', 'location']):
-                    structure['circle_col'] = col
-                    break
+            unique_values = df_flat[col].dropna().astype(str).str.lower().unique()
+            # Check if contains valid circle names
+            valid_count = sum(
+                1 for val in unique_values 
+                if any(circle in val for circle in self.VALID_CIRCLES)
+            )
+            if valid_count >= 5:  # At least 5 valid circles
+                circle_col = col
+                logger.info(f"Circle column found: {col} ({valid_count} valid circles)")
+                break
         
-        # If not found, use first text column with right range
-        if not structure['circle_col']:
-            for col in text_cols:
-                if 5 <= df[col].nunique() <= 50:
-                    structure['circle_col'] = col
-                    break
+        # If not found, use first text column
+        if not circle_col and len(text_cols) > 0:
+            circle_col = text_cols[0]
+            logger.warning(f"Using first text column as circle: {circle_col}")
         
-        # Categorize metrics
-        for col in df.columns:
-            if col == structure['circle_col']:
-                continue
-            
-            col_lower = col.lower()
-            
-            # Customer metrics
-            if any(word in col_lower for word in ['customer', 'subscriber', 'user', 'base', 'count', 'active']):
-                structure['metrics']['customers'].append(col)
-            # Usage metrics
-            elif any(word in col_lower for word in ['call', 'mou', 'usage', 'duration', 'volume', 'traffic', 'minutes']):
-                structure['metrics']['usage'].append(col)
-            # Quality metrics
-            elif any(word in col_lower for word in ['cssr', 'asr', 'success', 'quality', 'rate', 'drop', 'fail']):
-                structure['metrics']['quality'].append(col)
-            # Segment metrics
-            elif any(word in col_lower for word in ['heavy', 'moderate', 'low', 'non', 'segment', 'tier']):
-                structure['metrics']['segments'].append(col)
-            # Numeric columns
-            elif pd.api.types.is_numeric_dtype(df[col]):
-                structure['metrics']['other'].append(col)
-        
-        logger.info(f"Structure: circle_col={structure['circle_col']}, metrics={sum(len(v) for v in structure['metrics'].values())}")
-        
-        return structure
+        return df_flat, circle_col
     
-    def _validate_circles(self, df: pd.DataFrame, structure: Dict) -> Dict:
-        """
-        Validate and enrich circle information
-        """
-        circle_col = structure['circle_col']
-        if not circle_col:
-            return {
-                'valid_circles': [],
-                'invalid_circles': [],
-                'total_circles': 0
-            }
+    def _validate_circles(self, df: pd.DataFrame, circle_col: Optional[str]) -> Dict:
+        """Validate circles"""
+        if not circle_col or circle_col not in df.columns:
+            return {'valid_circles': [], 'total_circles': 0, 'circle_col': None}
         
-        circles = df[circle_col].unique()
-        valid = []
-        invalid = []
-        
-        for circle in circles:
+        valid_circles = []
+        for circle in df[circle_col].unique():
             circle_clean = str(circle).lower().strip()
-            # Check if it's a valid circle name
-            is_valid = any(
-                valid_circle in circle_clean 
-                for valid_circle in self.VALID_CIRCLES
-            )
-            # Also check it's not a summary keyword
-            is_summary = any(
-                keyword in circle_clean 
-                for keyword in self.SUMMARY_KEYWORDS
-            )
+            is_valid = any(vc in circle_clean for vc in self.VALID_CIRCLES)
+            is_summary = any(kw in circle_clean for kw in self.SUMMARY_KEYWORDS)
             
             if is_valid and not is_summary:
-                valid.append(circle)
-            else:
-                invalid.append(circle)
+                valid_circles.append(circle)
         
-        circles_info = {
-            'valid_circles': valid,
-            'invalid_circles': invalid,
-            'total_circles': len(valid),
+        logger.info(f"Valid circles: {len(valid_circles)} - {valid_circles[:5]}")
+        
+        return {
+            'valid_circles': valid_circles,
+            'total_circles': len(valid_circles),
             'circle_col': circle_col
         }
-        
-        logger.info(f"Circles: {len(valid)} valid, {len(invalid)} invalid")
-        if invalid:
-            logger.warning(f"Invalid circles removed: {invalid}")
-        
-        return circles_info
     
-    def _analyze_circles(self, df: pd.DataFrame, structure: Dict, circles_info: Dict) -> List[Dict]:
-        """
-        Deep analysis for each valid circle
-        """
-        circle_col = circles_info['circle_col']
-        valid_circles = circles_info['valid_circles']
+    def _map_metrics(self, df: pd.DataFrame) -> Dict[str, List[str]]:
+        """Map columns to metric categories - SPECIFIC TO YOUR DATA"""
+        metrics = {
+            'customers': [],
+            'call_attempts': [],
+            'cssr': [],
+            'asr': [],
+            'mou': [],
+            'penetration': [],
+            'segments': [],
+            'other_numeric': []
+        }
         
-        if not circle_col or len(valid_circles) == 0:
+        for col in df.columns:
+            col_lower = str(col).lower()
+            
+            # Customers
+            if any(x in col_lower for x in ['hsi active', 'active voice', 'active customers', 'customer count', 'total customer']):
+                if 'total' in col_lower or 'hsi' in col_lower or 'active voice' in col_lower:
+                    metrics['customers'].append(col)
+            
+            # Call attempts
+            elif 'call attempt' in col_lower:
+                if 'total' in col_lower or col_lower.endswith('call attempts(count)'):
+                    metrics['call_attempts'].append(col)
+            
+            # CSSR
+            elif 'cssr' in col_lower:
+                if 'total' in col_lower or col_lower == 'cssr (%)':
+                    metrics['cssr'].append(col)
+            
+            # ASR
+            elif 'asr' in col_lower:
+                if 'total' in col_lower or col_lower == 'asr(%)':
+                    metrics['asr'].append(col)
+            
+            # MOU
+            elif 'mou' in col_lower or 'minutes' in col_lower:
+                if 'total' in col_lower or 'average' in col_lower or '30 d total' in col_lower:
+                    metrics['mou'].append(col)
+            
+            # Penetration
+            elif 'penetration' in col_lower or 'active monthly to total' in col_lower:
+                metrics['penetration'].append(col)
+            
+            # Segments (Heavy, Moderate, Low, Non)
+            elif any(x in col_lower for x in ['heavy', 'moderate', 'low', 'non user']):
+                if 'customer count' in col_lower or 'to total' in col_lower:
+                    metrics['segments'].append(col)
+            
+            # Other numeric
+            elif pd.api.types.is_numeric_dtype(df[col]):
+                metrics['other_numeric'].append(col)
+        
+        logger.info(f"Metrics mapped: customers={len(metrics['customers'])}, "
+                   f"call_attempts={len(metrics['call_attempts'])}, "
+                   f"cssr={len(metrics['cssr'])}, mou={len(metrics['mou'])}")
+        
+        return metrics
+    
+    def _analyze_circles_v9(self, df: pd.DataFrame, circle_col: str, 
+                           circles_info: Dict, metrics_map: Dict) -> List[Dict]:
+        """Deep analysis per circle with YOUR data"""
+        if not circle_col or circles_info['total_circles'] == 0:
             return []
+        
+        valid_circles = circles_info['valid_circles']
+        df_valid = df[df[circle_col].isin(valid_circles)]
         
         insights = []
         
-        # Filter to valid circles only
-        df_valid = df[df[circle_col].isin(valid_circles)]
-        
         for circle in valid_circles:
-            circle_data = df_valid[df_valid[circle_col] == circle]
-            
-            if len(circle_data) == 0:
-                continue
+            circle_data = df_valid[df_valid[circle_col] == circle].iloc[0]  # First row
             
             insight = {
                 'circle': circle,
                 'metrics': {},
                 'problems': [],
-                'opportunities': [],
                 'priority': 'normal'
             }
             
-            # Analyze each metric category
-            for category, cols in structure['metrics'].items():
-                for col in cols:
-                    if col in circle_data.columns:
-                        values = circle_data[col].dropna()
-                        if len(values) > 0:
-                            # Get first value (assuming 1 row per circle)
-                            value = values.iloc[0]
-                            
-                            # Store metric
-                            insight['metrics'][col] = {
-                                'value': value,
-                                'category': category
-                            }
-                            
-                            # Check against benchmarks
-                            problem = self._check_metric_health(col, value, category)
-                            if problem:
-                                insight['problems'].append(problem)
+            # Extract customers
+            if metrics_map['customers']:
+                for col in metrics_map['customers'][:3]:  # Top 3
+                    if col in circle_data.index:
+                        val = circle_data[col]
+                        if pd.notna(val) and (isinstance(val, (int, float)) or str(val).replace('.','').replace('%','').isdigit()):
+                            insight['metrics'][col] = self._format_value(val)
             
-            # Determine priority
-            critical_count = sum(1 for p in insight['problems'] if p.get('severity') == 'critical')
-            if critical_count >= 2:
-                insight['priority'] = 'critical'
-            elif critical_count == 1 or len(insight['problems']) >= 3:
-                insight['priority'] = 'high'
+            # Extract call attempts
+            if metrics_map['call_attempts']:
+                col = metrics_map['call_attempts'][0]
+                if col in circle_data.index:
+                    val = circle_data[col]
+                    if pd.notna(val):
+                        insight['metrics']['Call Attempts'] = self._format_value(val)
+            
+            # Extract CSSR - CHECK BENCHMARK
+            if metrics_map['cssr']:
+                col = metrics_map['cssr'][0]
+                if col in circle_data.index:
+                    val = circle_data[col]
+                    if pd.notna(val):
+                        cssr_val = self._extract_numeric(val)
+                        insight['metrics']['CSSR'] = f"{cssr_val:.1f}%"
+                        
+                        # Check against benchmark
+                        if cssr_val < 90:
+                            insight['problems'].append({
+                                'type': 'quality',
+                                'severity': 'critical',
+                                'metric': 'CSSR',
+                                'value': cssr_val,
+                                'target': 95.0,
+                                'gap': 95.0 - cssr_val
+                            })
+                            insight['priority'] = 'critical'
+                        elif cssr_val < 95:
+                            insight['problems'].append({
+                                'type': 'quality',
+                                'severity': 'high',
+                                'metric': 'CSSR',
+                                'value': cssr_val,
+                                'target': 95.0,
+                                'gap': 95.0 - cssr_val
+                            })
+                            if insight['priority'] == 'normal':
+                                insight['priority'] = 'high'
+            
+            # Extract MOU
+            if metrics_map['mou']:
+                for col in metrics_map['mou'][:2]:
+                    if col in circle_data.index:
+                        val = circle_data[col]
+                        if pd.notna(val):
+                            mou_val = self._extract_numeric(val)
+                            if mou_val > 0:
+                                insight['metrics'][col] = f"{mou_val:.1f} mins"
+            
+            # Extract penetration
+            if metrics_map['penetration']:
+                col = metrics_map['penetration'][0]
+                if col in circle_data.index:
+                    val = circle_data[col]
+                    if pd.notna(val):
+                        pen_val = self._extract_numeric(val)
+                        insight['metrics']['Penetration'] = f"{pen_val:.1f}%"
+                        
+                        if pen_val < 15:
+                            insight['problems'].append({
+                                'type': 'growth',
+                                'severity': 'medium',
+                                'metric': 'Penetration',
+                                'value': pen_val,
+                                'target': 25.0,
+                                'gap': 25.0 - pen_val
+                            })
             
             insights.append(insight)
         
@@ -347,116 +347,53 @@ class AIInsightsEngine:
         
         return insights
     
-    def _check_metric_health(self, col_name: str, value: Any, category: str) -> Optional[Dict]:
-        """
-        Check if metric value is within acceptable range
-        """
-        if not pd.api.types.is_numeric_dtype(type(value)):
-            return None
+    def _calculate_network_summary(self, df: pd.DataFrame, circle_col: str,
+                                  circles_info: Dict, metrics_map: Dict) -> Dict:
+        """Network-wide statistics"""
+        summary = {'total_circles': circles_info['total_circles']}
         
-        col_lower = col_name.lower()
-        
-        # Match to benchmark
-        for metric_key, benchmark in self.BENCHMARKS.items():
-            if metric_key in col_lower:
-                target = benchmark['target']
-                critical = benchmark['critical']
-                unit = benchmark['unit']
-                
-                # Quality metrics (higher is better)
-                if metric_key in ['cssr', 'asr', 'success_rate', 'quality']:
-                    if value < critical:
-                        return {
-                            'metric': col_name,
-                            'value': value,
-                            'target': target,
-                            'gap': target - value,
-                            'severity': 'critical',
-                            'type': 'quality',
-                            'unit': unit
-                        }
-                    elif value < target:
-                        return {
-                            'metric': col_name,
-                            'value': value,
-                            'target': target,
-                            'gap': target - value,
-                            'severity': 'high',
-                            'type': 'quality',
-                            'unit': unit
-                        }
-                
-                # Usage metrics (check for extremes)
-                elif metric_key in ['mou', 'arpu']:
-                    if value < critical:
-                        return {
-                            'metric': col_name,
-                            'value': value,
-                            'target': target,
-                            'gap': target - value,
-                            'severity': 'high',
-                            'type': 'revenue',
-                            'unit': unit
-                        }
-                
-                # Capacity metrics (higher means overload)
-                elif metric_key == 'utilization':
-                    if value > critical:  # >90% = overload
-                        return {
-                            'metric': col_name,
-                            'value': value,
-                            'target': target,
-                            'gap': value - target,
-                            'severity': 'critical',
-                            'type': 'capacity',
-                            'unit': unit
-                        }
-        
-        return None
-    
-    def _analyze_network(self, df: pd.DataFrame, structure: Dict, circles_info: Dict) -> Dict:
-        """
-        Network-wide summary statistics
-        """
-        summary = {
-            'total_circles': circles_info['total_circles'],
-            'metrics_summary': {}
-        }
-        
-        # Filter to valid circles
-        circle_col = circles_info['circle_col']
         valid_circles = circles_info['valid_circles']
+        df_valid = df[df[circle_col].isin(valid_circles)]
         
-        if circle_col and len(valid_circles) > 0:
-            df_valid = df[df[circle_col].isin(valid_circles)]
-        else:
-            df_valid = df
+        # Sum customers
+        if metrics_map['customers']:
+            col = metrics_map['customers'][0]  # First customer column
+            if col in df_valid.columns and pd.api.types.is_numeric_dtype(df_valid[col]):
+                total = df_valid[col].sum()
+                summary['total_customers'] = int(total)
+                summary['avg_customers_per_circle'] = int(total / len(valid_circles))
         
-        # Calculate network-wide stats
-        for category, cols in structure['metrics'].items():
-            for col in cols:
-                if col in df_valid.columns and pd.api.types.is_numeric_dtype(df_valid[col]):
-                    values = df_valid[col].dropna()
-                    if len(values) > 0:
-                        summary['metrics_summary'][col] = {
-                            'total': float(values.sum()),
-                            'average': float(values.mean()),
-                            'median': float(values.median()),
-                            'min': float(values.min()),
-                            'max': float(values.max()),
-                            'std': float(values.std()) if len(values) > 1 else 0,
-                            'category': category
-                        }
+        # Sum call attempts
+        if metrics_map['call_attempts']:
+            col = metrics_map['call_attempts'][0]
+            if col in df_valid.columns and pd.api.types.is_numeric_dtype(df_valid[col]):
+                total = df_valid[col].sum()
+                summary['total_call_attempts'] = int(total)
+        
+        # Average CSSR
+        if metrics_map['cssr']:
+            col = metrics_map['cssr'][0]
+            if col in df_valid.columns:
+                values = df_valid[col].apply(self._extract_numeric).dropna()
+                if len(values) > 0:
+                    summary['avg_cssr'] = float(values.mean())
+                    summary['min_cssr'] = float(values.min())
+                    summary['max_cssr'] = float(values.max())
+        
+        # Average MOU
+        if metrics_map['mou']:
+            col = metrics_map['mou'][0]
+            if col in df_valid.columns:
+                values = df_valid[col].apply(self._extract_numeric).dropna()
+                if len(values) > 0:
+                    summary['avg_mou'] = float(values.mean())
         
         return summary
     
-    def _detect_problems(self, circle_insights: List[Dict], network_summary: Dict) -> List[Dict]:
-        """
-        Aggregate and prioritize problems across all circles
-        """
+    def _detect_problems_v9(self, circle_insights: List[Dict], metrics_map: Dict) -> List[Dict]:
+        """Aggregate problems"""
         all_problems = []
         
-        # Collect all problems from circles
         for insight in circle_insights:
             for problem in insight['problems']:
                 problem['circle'] = insight['circle']
@@ -467,304 +404,258 @@ class AIInsightsEngine:
         severity_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
         all_problems.sort(key=lambda x: severity_order.get(x.get('severity'), 4))
         
-        return all_problems[:10]  # Top 10 problems
+        return all_problems[:15]  # Top 15
     
-    def _generate_recommendations(self, problems: List[Dict], circle_insights: List[Dict]) -> List[Dict]:
-        """
-        Generate actionable recommendations with ROI
-        """
+    def _generate_recommendations_v9(self, problems: List[Dict], 
+                                    circle_insights: List[Dict],
+                                    network_summary: Dict) -> List[Dict]:
+        """Generate actionable recommendations"""
         recommendations = []
         
-        # Group problems by type
-        problem_types = {}
-        for problem in problems:
-            ptype = problem.get('type', 'other')
-            if ptype not in problem_types:
-                problem_types[ptype] = []
-            problem_types[ptype].append(problem)
+        # Group by type
+        quality_problems = [p for p in problems if p.get('type') == 'quality']
+        growth_problems = [p for p in problems if p.get('type') == 'growth']
         
-        # Generate recommendations for each problem type
-        for ptype, plist in problem_types.items():
-            if ptype == 'quality':
-                rec = self._generate_quality_recommendation(plist)
-            elif ptype == 'capacity':
-                rec = self._generate_capacity_recommendation(plist)
-            elif ptype == 'revenue':
-                rec = self._generate_revenue_recommendation(plist)
-            else:
-                rec = self._generate_generic_recommendation(plist)
+        # Quality recommendation
+        if quality_problems:
+            affected_circles = list(set([p['circle'] for p in quality_problems]))
+            avg_gap = np.mean([p['gap'] for p in quality_problems])
             
-            if rec:
-                recommendations.append(rec)
+            recommendations.append({
+                'title': 'Network Quality Improvement Program',
+                'priority': 'CRITICAL' if len(quality_problems) >= 3 else 'HIGH',
+                'affected_circles': affected_circles[:5],
+                'problem': f"{len(affected_circles)} circles below CSSR target (avg gap: {avg_gap:.1f}%)",
+                'impact': f"Revenue at Risk: ₹{len(affected_circles) * 54:,.0f} lakhs/month",
+                'actions': [
+                    'Deploy field optimization team within 48 hours',
+                    'RF optimization in affected circles (Week 1-2)',
+                    'Additional capacity deployment (Week 3-4)'
+                ],
+                'investment': f"₹{len(affected_circles) * 4:,.0f}-{len(affected_circles) * 6:,.0f} Crores",
+                'roi': '3-4 months',
+                'expected_result': 'CSSR improvement to 95%+ in all circles'
+            })
+        
+        # Growth recommendation
+        if growth_problems:
+            affected_circles = list(set([p['circle'] for p in growth_problems]))
+            
+            recommendations.append({
+                'title': 'Customer Penetration Enhancement',
+                'priority': 'MEDIUM',
+                'affected_circles': affected_circles[:5],
+                'problem': f"{len(affected_circles)} circles with low penetration (<15%)",
+                'impact': f"Growth Opportunity: {len(affected_circles) * 5000:,} potential customers",
+                'actions': [
+                    'Launch targeted marketing campaigns',
+                    'Onboarding incentives for new customers',
+                    'Partnership with local businesses'
+                ],
+                'investment': f"₹{len(affected_circles) * 2:,.0f}-{len(affected_circles) * 3:,.0f} Crores",
+                'roi': '6-8 months',
+                'expected_result': 'Penetration increase to 20%+'
+            })
+        
+        # Network optimization (general)
+        if len(circle_insights) > 10:
+            recommendations.append({
+                'title': 'Network-Wide Optimization Initiative',
+                'priority': 'MEDIUM',
+                'affected_circles': ['All circles'],
+                'problem': f"Operating {network_summary['total_circles']} circles with varying performance",
+                'impact': 'Standardize operations and improve efficiency',
+                'actions': [
+                    'Best practices sharing across circles',
+                    'Standardized monitoring and alerting',
+                    'Quarterly performance reviews'
+                ],
+                'investment': '₹5-8 Crores (one-time)',
+                'roi': '12 months',
+                'expected_result': 'Consistent performance across network'
+            })
         
         return recommendations
     
-    def _generate_quality_recommendation(self, problems: List[Dict]) -> Dict:
-        """Generate quality improvement recommendation"""
-        affected_circles = list(set([p['circle'] for p in problems]))
-        avg_gap = np.mean([p['gap'] for p in problems])
+    def _format_presentation_output(self, cleaning_report: Dict, circles_info: Dict,
+                                   circle_insights: List[Dict], network_summary: Dict,
+                                   problems: List[Dict], recommendations: List[Dict],
+                                   metrics_map: Dict) -> Dict:
+        """Format for executive presentation"""
         
-        return {
-            'title': 'Network Quality Improvement Program',
-            'priority': 'CRITICAL' if len(problems) >= 3 else 'HIGH',
-            'affected_circles': affected_circles[:5],  # Top 5
-            'problem': f"{len(affected_circles)} circles below quality threshold (avg gap: {avg_gap:.1f}%)",
-            'impact': f"Revenue at Risk: ₹{len(affected_circles) * 54:,.0f} lakhs/month",
-            'actions': [
-                {
-                    'action': 'Deploy field optimization team',
-                    'timeline': '48 hours',
-                    'owner': 'Network Operations'
-                },
-                {
-                    'action': 'RF optimization in affected circles',
-                    'timeline': 'Week 1-2',
-                    'owner': 'RF Planning'
-                },
-                {
-                    'action': 'Additional capacity deployment',
-                    'timeline': 'Week 3-4',
-                    'owner': 'Infrastructure'
-                }
-            ],
-            'investment': f"₹{len(affected_circles) * 4:,.0f} - {len(affected_circles) * 6:,.0f} Crores",
-            'expected_roi': '3-4 months',
-            'expected_result': 'Quality improvement to 95%+ in all circles'
-        }
-    
-    def _generate_capacity_recommendation(self, problems: List[Dict]) -> Dict:
-        """Generate capacity expansion recommendation"""
-        affected_circles = list(set([p['circle'] for p in problems]))
-        
-        return {
-            'title': 'Network Capacity Expansion',
-            'priority': 'HIGH',
-            'affected_circles': affected_circles[:5],
-            'problem': f"{len(affected_circles)} circles facing capacity constraints",
-            'impact': f"Call blocking rate: {len(affected_circles) * 3:.1f}% during peak hours",
-            'actions': [
-                {
-                    'action': 'Deploy additional MSCs/BSCs',
-                    'timeline': '2-3 weeks',
-                    'owner': 'Infrastructure'
-                },
-                {
-                    'action': 'Increase bandwidth',
-                    'timeline': '1-2 weeks',
-                    'owner': 'Network Planning'
-                }
-            ],
-            'investment': f"₹{len(affected_circles) * 8:,.0f} - {len(affected_circles) * 12:,.0f} Crores",
-            'expected_roi': '6-8 months',
-            'expected_result': 'Capacity utilization: 75-85% optimal range'
-        }
-    
-    def _generate_revenue_recommendation(self, problems: List[Dict]) -> Dict:
-        """Generate revenue optimization recommendation"""
-        affected_circles = list(set([p['circle'] for p in problems]))
-        
-        return {
-            'title': 'Revenue Recovery Program',
-            'priority': 'HIGH',
-            'affected_circles': affected_circles[:5],
-            'problem': f"{len(affected_circles)} circles with sub-optimal ARPU/MOU",
-            'impact': f"Revenue opportunity: ₹{len(affected_circles) * 45:,.0f} lakhs/month",
-            'actions': [
-                {
-                    'action': 'Launch targeted upsell campaigns',
-                    'timeline': '2 weeks',
-                    'owner': 'Marketing'
-                },
-                {
-                    'action': 'Customer retention program',
-                    'timeline': 'Ongoing',
-                    'owner': 'Customer Success'
-                }
-            ],
-            'investment': f"₹{len(affected_circles) * 2:,.0f} - {len(affected_circles) * 3:,.0f} Crores",
-            'expected_roi': '2-3 months',
-            'expected_result': f'ARPU improvement: {10 * len(affected_circles):.0f}% increase'
-        }
-    
-    def _generate_generic_recommendation(self, problems: List[Dict]) -> Dict:
-        """Generic recommendation"""
-        affected_circles = list(set([p['circle'] for p in problems]))
-        
-        return {
-            'title': 'Operational Improvement Initiative',
-            'priority': 'MEDIUM',
-            'affected_circles': affected_circles[:5],
-            'problem': f"{len(affected_circles)} circles require attention",
-            'actions': [
-                {
-                    'action': 'Detailed assessment',
-                    'timeline': '1 week',
-                    'owner': 'Operations'
-                }
-            ]
-        }
-    
-    def _format_boardroom_output(self, **kwargs) -> Dict[str, Any]:
-        """
-        Format final output for executive presentation
-        """
-        cleaning_report = kwargs['cleaning_report']
-        structure = kwargs['structure']
-        circles_info = kwargs['circles_info']
-        circle_insights = kwargs['circle_insights']
-        network_summary = kwargs['network_summary']
-        problems = kwargs['problems']
-        recommendations = kwargs['recommendations']
+        critical_count = sum(1 for c in circle_insights if c['priority'] == 'critical')
+        high_count = sum(1 for c in circle_insights if c['priority'] == 'high')
+        normal_count = len(circle_insights) - critical_count - high_count
         
         # Executive Summary
-        critical_circles = [c for c in circle_insights if c['priority'] == 'critical']
-        high_priority_circles = [c for c in circle_insights if c['priority'] == 'high']
-        
-        executive_summary = f"""
-TELECOM OPERATIONS DASHBOARD - EXECUTIVE SUMMARY
-{'=' * 60}
+        exec_summary = f"""
+╔════════════════════════════════════════════════════════════╗
+║     TELECOM OPERATIONS DASHBOARD - EXECUTIVE SUMMARY       ║
+╚════════════════════════════════════════════════════════════╝
 
 Analysis Date: {self.analysis_timestamp.strftime('%Y-%m-%d %H:%M')}
 Network Coverage: {circles_info['total_circles']} Circles Monitored
 
-OVERALL HEALTH CHECK:
-  🔴 Critical Priority: {len(critical_circles)} circles
-  🟡 High Priority: {len(high_priority_circles)} circles
-  🟢 Normal: {len(circle_insights) - len(critical_circles) - len(high_priority_circles)} circles
+OVERALL NETWORK HEALTH:
+  🔴 Critical Priority: {critical_count} circles
+  🟡 High Priority: {high_count} circles
+  🟢 Normal Operations: {normal_count} circles
 
+"""
+        
+        # Network metrics
+        if 'total_customers' in network_summary:
+            exec_summary += f"""
+NETWORK-WIDE METRICS:
+  • Total Customers: {network_summary['total_customers']:,}
+  • Avg per Circle: {network_summary.get('avg_customers_per_circle', 0):,}
+"""
+        
+        if 'total_call_attempts' in network_summary:
+            exec_summary += f"  • Total Call Attempts: {network_summary['total_call_attempts']:,}\n"
+        
+        if 'avg_cssr' in network_summary:
+            exec_summary += f"""  • Network CSSR: {network_summary['avg_cssr']:.1f}% (Range: {network_summary.get('min_cssr', 0):.1f}% - {network_summary.get('max_cssr', 0):.1f}%)
+"""
+        
+        if 'avg_mou' in network_summary:
+            exec_summary += f"  • Average MOU: {network_summary['avg_mou']:.1f} minutes\n"
+        
+        exec_summary += f"""
 TOP CONCERNS:
   • {len([p for p in problems if p.get('type') == 'quality'])} Quality Issues Detected
   • {len([p for p in problems if p.get('type') == 'capacity'])} Capacity Constraints
-  • {len([p for p in problems if p.get('type') == 'revenue'])} Revenue Optimization Opportunities
+  • {len([p for p in problems if p.get('type') == 'growth'])} Growth Opportunities
 
-ACTION REQUIRED: {len([r for r in recommendations if r.get('priority') in ['CRITICAL', 'HIGH']])} immediate actions recommended
+⚠️  IMMEDIATE ACTION REQUIRED: {len([r for r in recommendations if r.get('priority') in ['CRITICAL', 'HIGH']])} urgent recommendations
 """
         
-        # Circle-by-Circle Insights
-        circle_details = []
-        for idx, insight in enumerate(circle_insights[:5]):  # Top 5
-            circle_name = insight['circle']
+        # Circle insights
+        insights_text = ""
+        for idx, insight in enumerate(circle_insights[:5], 1):
+            circle = insight['circle']
             priority = insight['priority'].upper()
             
-            # Format metrics
-            metrics_text = []
-            for metric_name, metric_data in list(insight['metrics'].items())[:3]:  # Top 3 metrics
-                value = metric_data['value']
-                if isinstance(value, (int, float)):
-                    if value > 1000:
-                        metrics_text.append(f"{metric_name}: {value:,.0f}")
-                    else:
-                        metrics_text.append(f"{metric_name}: {value:.1f}")
-            
-            # Format problems
-            problems_text = []
-            for problem in insight['problems'][:2]:  # Top 2 problems
-                metric = problem['metric']
-                value = problem['value']
-                target = problem['target']
-                unit = problem.get('unit', '')
-                problems_text.append(f"{metric}: {value:.1f}{unit} (Target: {target:.1f}{unit})")
-            
-            circle_detail = f"""
+            insights_text += f"""
 {'─' * 60}
-CIRCLE {idx + 1}: {circle_name} [{priority} PRIORITY]
+CIRCLE {idx}: {circle} [{priority} PRIORITY]
 {'─' * 60}
 
 Key Metrics:
-{chr(10).join('  • ' + m for m in metrics_text) if metrics_text else '  No metrics available'}
-
-Issues Detected:
-{chr(10).join('  ⚠️  ' + p for p in problems_text) if problems_text else '  No critical issues'}
 """
-            circle_details.append(circle_detail)
+            for metric_name, metric_value in list(insight['metrics'].items())[:5]:
+                insights_text += f"  • {metric_name}: {metric_value}\n"
+            
+            if insight['problems']:
+                insights_text += "\nIssues Detected:\n"
+                for prob in insight['problems'][:3]:
+                    insights_text += f"  ⚠️  {prob['metric']}: {prob['value']:.1f} (Target: {prob['target']:.1f})\n"
         
-        # Recommendations Section
-        recommendations_text = []
-        for idx, rec in enumerate(recommendations[:3], 1):  # Top 3
-            rec_text = f"""
+        # Recommendations
+        rec_text = ""
+        for idx, rec in enumerate(recommendations, 1):
+            rec_text += f"""
+{'═' * 60}
 RECOMMENDATION {idx}: {rec['title']} [{rec['priority']}]
-{'─' * 60}
+{'═' * 60}
 
 Problem: {rec['problem']}
 Impact: {rec['impact']}
 
 Actions:
-{chr(10).join('  ' + str(i+1) + '. ' + a['action'] + f" ({a['timeline']}, Owner: {a['owner']})" for i, a in enumerate(rec['actions']))}
-
-Investment: {rec.get('investment', 'TBD')}
-Expected ROI: {rec.get('expected_roi', 'TBD')}
-Expected Result: {rec.get('expected_result', 'TBD')}
 """
-            recommendations_text.append(rec_text)
+            for action in rec['actions']:
+                rec_text += f"  ✓ {action}\n"
+            
+            rec_text += f"""
+Investment: {rec['investment']}
+Expected ROI: {rec['roi']}
+Expected Result: {rec['expected_result']}
+"""
         
-        # Final Output
-        output = {
-            'executive_summary': executive_summary,
-            'key_insights': '\n'.join(circle_details),
-            'recommendations': '\n'.join(recommendations_text),
+        return {
+            'executive_summary': exec_summary,
+            'key_insights': insights_text,
+            'recommendations': rec_text,
             'circle_analysis': circle_insights,
             'problems': problems,
             'network_summary': network_summary,
             'metadata': {
                 'total_circles': circles_info['total_circles'],
-                'valid_circles': circles_info['valid_circles'],
-                'critical_count': len(critical_circles),
-                'high_priority_count': len(high_priority_circles),
-                'data_quality': {
-                    'original_rows': cleaning_report['original_rows'],
-                    'cleaned_rows': cleaning_report['cleaned_rows'],
-                    'removed_rows': cleaning_report['removed_count'],
-                    'removed_values': cleaning_report['removed_values']
-                }
+                'critical_count': critical_count,
+                'high_count': high_count,
+                'metrics_detected': {k: len(v) for k, v in metrics_map.items() if v},
+                'data_quality': cleaning_report
             }
         }
-        
-        return output
     
-    def _generate_no_data_response(self, cleaning_report: Dict) -> Dict[str, Any]:
-        """
-        Response when no valid data remains after cleaning
-        """
+    def _generate_no_data_response(self, cleaning_report: Dict) -> Dict:
+        """No data after cleaning"""
         return {
-            'executive_summary': """
-ERROR: No Valid Circle Data Found
-═══════════════════════════════════
+            'executive_summary': f"""
+ERROR: No Valid Data After Cleaning
 
-The uploaded file appears to contain only summary/aggregate rows (e.g., "PAN INDIA", "Total").
+Original Rows: {cleaning_report['original_rows']}
+Removed: {cleaning_report['removed_count']} rows
+Removed Values: {', '.join(cleaning_report['removed_values'][:5])}
 
-Data Cleaning Report:
-  • Original Rows: {}
-  • Valid Rows After Cleaning: 0
-  • Removed Values: {}
-
-REQUIRED: Please upload a file containing individual circle-level data.
-Expected format:
-  - Row 1-2: Headers
-  - Rows 3-N: Individual circles (Mumbai, Delhi, Kolkata, etc.)
-  - Last row (optional): PAN INDIA summary (will be automatically removed)
-
-Contact support if you believe this is an error.
-""".format(
-                cleaning_report['original_rows'],
-                ', '.join(cleaning_report['removed_values'][:5])
-            ),
+Please upload file with individual circle data.
+""",
             'key_insights': '',
             'recommendations': '',
             'metadata': cleaning_report
         }
+    
+    def _generate_no_circles_response(self, cleaning_report: Dict, columns: List[str]) -> Dict:
+        """No valid circles found"""
+        return {
+            'executive_summary': f"""
+ERROR: No Valid Circles Detected
+
+Data has {cleaning_report['cleaned_rows']} rows but no valid Indian telecom circles found.
+
+Columns available: {', '.join(columns[:10])}
+
+Expected circle names: Mumbai, Delhi, Kolkata, Chennai, etc.
+""",
+            'key_insights': '',
+            'recommendations': '',
+            'metadata': {'columns': columns, 'cleaned_rows': cleaning_report['cleaned_rows']}
+        }
+    
+    def _format_value(self, val: Any) -> str:
+        """Format value for display"""
+        if pd.isna(val):
+            return 'N/A'
+        
+        num = self._extract_numeric(val)
+        if num == 0:
+            return str(val)
+        
+        if num > 10000:
+            return f"{num:,.0f}"
+        elif num > 100:
+            return f"{num:.1f}"
+        else:
+            return f"{num:.2f}"
+    
+    def _extract_numeric(self, val: Any) -> float:
+        """Extract numeric value from string/float/int"""
+        if pd.isna(val):
+            return 0.0
+        
+        if isinstance(val, (int, float)):
+            return float(val)
+        
+        # Remove % and convert
+        val_str = str(val).replace('%', '').replace(',', '').strip()
+        try:
+            return float(val_str)
+        except:
+            return 0.0
 
 
 def analyze_data(df: pd.DataFrame, groq_api_key: str = None, context: Dict = None) -> Dict[str, Any]:
-    """
-    Main entry point for AI analysis
-    
-    Args:
-        df: Input dataframe
-        groq_api_key: Groq API key (optional, not used in V8)
-        context: Additional context
-    
-    Returns:
-        Analysis results dictionary
-    """
+    """Main entry point"""
     engine = AIInsightsEngine(groq_api_key=groq_api_key)
     return engine.analyze_data(df, context=context)

@@ -1,5 +1,5 @@
 """
-AI Insights Engine V9 - EMERGENCY FIX FOR MULTI-LEVEL HEADERS
+AI Insights Engine V10 - FINAL (DATETIME FILTERING) FIX FOR MULTI-LEVEL HEADERS
 =============================================================
 
 CRITICAL FIX for presentation tomorrow:
@@ -8,8 +8,8 @@ CRITICAL FIX for presentation tomorrow:
 - FORCES insight generation with your exact data structure
 - Generates full executive summary with numbers
 
-Author: V9 Emergency
-Date: 2026-01-08 (FOR PRESENTATION TOMORROW)
+Author: V10 Final
+Date: 2026-01-09 (FOR PRESENTATION TOMORROW)
 """
 
 import pandas as pd
@@ -241,26 +241,18 @@ class AIInsightsEngine:
         
         return metrics
     
-
     def _is_datetime_column(self, df: pd.DataFrame, col: str) -> bool:
-        """Check if column contains datetime/date values to skip"""
+        """Skip datetime columns"""
         try:
-            # Check dtype
             if pd.api.types.is_datetime64_any_dtype(df[col]):
                 return True
-            
-            # Check column name patterns
             col_lower = str(col).lower()
-            date_patterns = ['date', 'time', 'timestamp', 'usage 0', 'usage 1', 'usage 2', 'usage 3']
-            if any(pattern in col_lower for pattern in date_patterns):
+            if any(x in col_lower for x in ['date', 'time', 'timestamp', 'usage 0', 'usage 1', 'usage 2']):
                 return True
-            
-            # Check sample values
             sample = df[col].dropna().head(3)
-            if len(sample) > 0:
-                for val in sample:
-                    if isinstance(val, (pd.Timestamp, datetime)):
-                        return True
+            for val in sample:
+                if isinstance(val, (pd.Timestamp, datetime)):
+                    return True
         except:
             pass
         return False
@@ -290,6 +282,8 @@ class AIInsightsEngine:
             if metrics_map['customers']:
                 for col in metrics_map['customers'][:3]:  # Top 3
                     if col in circle_data.index:
+                        if self._is_datetime_column(df_valid, col):
+                            continue
                         val = circle_data[col]
                         if pd.notna(val) and (isinstance(val, (int, float)) or str(val).replace('.','').replace('%','').isdigit()):
                             insight['metrics'][col] = self._format_value(val)
@@ -297,7 +291,7 @@ class AIInsightsEngine:
             # Extract call attempts
             if metrics_map['call_attempts']:
                 col = metrics_map['call_attempts'][0]
-                if col in circle_data.index:
+                if col in circle_data.index and not self._is_datetime_column(df_valid, col):
                     val = circle_data[col]
                     if pd.notna(val):
                         insight['metrics']['Call Attempts'] = self._format_value(val)
@@ -347,7 +341,7 @@ class AIInsightsEngine:
             # Extract penetration
             if metrics_map['penetration']:
                 col = metrics_map['penetration'][0]
-                if col in circle_data.index:
+                if col in circle_data.index and not self._is_datetime_column(df_valid, col):
                     val = circle_data[col]
                     if pd.notna(val):
                         pen_val = self._extract_numeric(val)

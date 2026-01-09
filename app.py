@@ -112,7 +112,7 @@ with st.sidebar:
         st.warning("⚠️ AI Disabled")
     
     st.markdown("---")
-    st.caption("V9 Emergency - Presentation Ready 🚀")
+    st.caption("V10 Final - Datetime Filtering Active 🚀")
 
 # ============================================================================
 # HOME PAGE

@@ -242,17 +242,27 @@ class AIInsightsEngine:
         return metrics
     
     def _is_datetime_column(self, df: pd.DataFrame, col: str) -> bool:
-        """Skip datetime columns"""
+        """Skip datetime columns - PRECISE CHECK"""
         try:
+            # Check dtype first (most reliable)
             if pd.api.types.is_datetime64_any_dtype(df[col]):
                 return True
-            col_lower = str(col).lower()
-            if any(x in col_lower for x in ['date', 'time', 'timestamp', 'usage 0', 'usage 1', 'usage 2']):
-                return True
+            
+            # Check actual values
             sample = df[col].dropna().head(3)
-            for val in sample:
-                if isinstance(val, (pd.Timestamp, datetime)):
-                    return True
+            if len(sample) > 0:
+                for val in sample:
+                    # If value is actually a Timestamp object
+                    if isinstance(val, (pd.Timestamp, datetime)):
+                        return True
+                    # If value looks like a date string (1970-01-01 format)
+                    if isinstance(val, str) and len(val) >= 10:
+                        if val[:10].count('-') == 2:  # YYYY-MM-DD format
+                            try:
+                                pd.to_datetime(val)
+                                return True
+                            except:
+                                pass
         except:
             pass
         return False

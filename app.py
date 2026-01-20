@@ -421,8 +421,26 @@ elif page == "insights":
         summary = insights.get("executive_summary", "No summary available")
         st.markdown(f'<div class="success-box">{summary}</div>', unsafe_allow_html=True)
 
-        # Dataset Overview
+        # What the model analyzed
+        st.markdown("---")
+        st.subheader("🔍 What Was Analyzed")
         dataset_summaries = insights.get("dataset_summaries", [])
+        if dataset_summaries:
+            for ds in dataset_summaries:
+                with st.expander(f"📄 {ds.get('name', 'Dataset')}"):
+                    st.write(
+                        f"Rows: **{ds.get('rows', 0):,}**, "
+                        f"Columns: **{ds.get('columns', 0)}**, "
+                        f"Numeric: **{len(ds.get('numeric_columns', []))}**, "
+                        f"Categorical: **{len(ds.get('categorical_columns', []))}**, "
+                        f"Date/Time: **{len(ds.get('datetime_columns', []))}**"
+                    )
+                    st.caption("Columns used for analysis (top 10)")
+                    st.write(", ".join(ds.get("numeric_columns", [])[:5] + ds.get("categorical_columns", [])[:5]) or "N/A")
+        else:
+            st.info("No dataset summaries available.")
+
+        # Dataset Overview
         if dataset_summaries:
             st.markdown("---")
             st.subheader("📚 Dataset Overview")
@@ -510,26 +528,58 @@ elif page == "charts":
         numeric_cols = [c for c in df.select_dtypes(include=['number']).columns if not c.startswith('_')]
         categorical_cols = [c for c in df.select_dtypes(include=['object']).columns if not c.startswith('_')]
         datetime_cols = [c for c in df.columns if pd.api.types.is_datetime64_any_dtype(df[c])]
+
+        # Dataset profile and preview
+        st.subheader("🧾 Dataset Profile")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Rows", f"{len(df):,}")
+        col2.metric("Columns", len(df.columns))
+        col3.metric("Numeric", len(numeric_cols))
+        col4.metric("Categorical", len(categorical_cols))
+
+        missing_pct = (df.isna().mean() * 100).round(2)
+        missing_table = missing_pct[missing_pct > 0].sort_values(ascending=False).head(8)
+        if not missing_table.empty:
+            st.caption("Top missing columns (%)")
+            st.dataframe(missing_table.reset_index().rename(columns={"index": "column", 0: "missing_pct"}))
+
+        with st.expander("👀 Preview First 10 Rows"):
+            st.dataframe(df.head(10))
         
         if not numeric_cols and not categorical_cols:
             st.info("No suitable columns for visualization.")
         else:
+            # Auto-dashboard helpers
+            top_numeric = None
+            top_categorical = None
+            if numeric_cols:
+                variances = df[numeric_cols].var(numeric_only=True).sort_values(ascending=False)
+                top_numeric = variances.index[0] if len(variances) > 0 else numeric_cols[0]
+            if categorical_cols:
+                valid_cats = []
+                for col in categorical_cols:
+                    nunique = df[col].nunique(dropna=True)
+                    if 2 <= nunique <= 20:
+                        valid_cats.append((col, nunique))
+                if valid_cats:
+                    top_categorical = sorted(valid_cats, key=lambda x: x[1], reverse=True)[0][0]
+                else:
+                    top_categorical = categorical_cols[0]
+
             st.subheader("⚡ Auto Dashboards")
             auto_cols = st.columns(2)
             with auto_cols[0]:
-                if categorical_cols and numeric_cols:
-                    x_col = categorical_cols[0]
-                    y_col = numeric_cols[0]
-                    auto_data = df.groupby(x_col)[y_col].sum().reset_index().nlargest(10, y_col)
-                    fig = px.bar(auto_data, x=x_col, y=y_col, title=f"{y_col} by {x_col}")
+                if top_categorical and top_numeric:
+                    auto_data = df.groupby(top_categorical)[top_numeric].sum().reset_index().nlargest(10, top_numeric)
+                    fig = px.bar(auto_data, x=top_categorical, y=top_numeric, title=f"{top_numeric} by {top_categorical}")
                     st.plotly_chart(fig, use_container_width=True)
             with auto_cols[1]:
-                if numeric_cols:
-                    fig = px.histogram(df, x=numeric_cols[0], title=f"Distribution of {numeric_cols[0]}")
+                if top_numeric:
+                    fig = px.histogram(df, x=top_numeric, title=f"Distribution of {top_numeric}")
                     st.plotly_chart(fig, use_container_width=True)
             if datetime_cols and numeric_cols:
                 time_col = datetime_cols[0]
-                value_col = numeric_cols[0]
+                value_col = top_numeric or numeric_cols[0]
                 trend = df.dropna(subset=[time_col]).copy()
                 if len(trend) > 0:
                     trend = trend.sort_values(time_col)

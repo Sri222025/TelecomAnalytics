@@ -153,102 +153,228 @@ def _summarize_dataset(df: pd.DataFrame, name: str) -> Dict:
 
 
 def _generate_rule_based_insights(dataset_summaries: List[Dict], merged_summary: Dict, merge_summary: Dict) -> Tuple[str, List[Dict], List[Dict]]:
-    """Generate data-driven insights without LLM dependency."""
+    """Generate comprehensive data-driven insights without LLM dependency."""
     total_rows = sum(s.get("rows", 0) for s in dataset_summaries)
     total_sheets = len(dataset_summaries)
-    executive_summary = (
-        f"Analyzed {total_sheets} sheet(s) with {total_rows:,} total rows. "
-        f"Generated quality checks, statistical summaries, and key patterns across your datasets."
-    )
+    
+    # Build comprehensive executive summary
+    exec_parts = [f"Analyzed {total_sheets} sheet(s) with {total_rows:,} total rows."]
+    
+    if merged_summary:
+        exec_parts.append(f"Merged dataset contains {merged_summary.get('rows', 0):,} records across {merged_summary.get('columns', 0)} columns.")
+    
+    numeric_cols_all = set()
+    categorical_cols_all = set()
+    for s in dataset_summaries:
+        numeric_cols_all.update(s.get("numeric_columns", []))
+        categorical_cols_all.update(s.get("categorical_columns", []))
+    
+    if numeric_cols_all:
+        exec_parts.append(f"Identified {len(numeric_cols_all)} numeric metrics and {len(categorical_cols_all)} categorical dimensions for analysis.")
+    
+    executive_summary = " ".join(exec_parts)
 
     key_insights = []
     recommendations = []
 
-    # Data quality insights
+    # Data quality insights with more detail
+    critical_issues = []
     for summary in dataset_summaries:
+        ds_name = summary.get('name', 'Dataset')
+        
+        # Missing data analysis
         missing_cols = summary.get("missing_columns", [])
         if missing_cols:
-            top_missing = missing_cols[0]
-            if top_missing["missing_pct"] >= 20:
+            high_missing = [m for m in missing_cols if m["missing_pct"] >= 30]
+            if high_missing:
+                top_missing = high_missing[0]
+                critical_issues.append(f"{ds_name}: {top_missing['column']} ({top_missing['missing_pct']:.1f}% missing)")
                 key_insights.append({
-                    "title": f"Data Quality Issue: {summary['name']} has high missing values",
+                    "title": f"Critical Data Gap: {top_missing['column']} in {ds_name}",
                     "description": (
-                        f"Column '{top_missing['column']}' has {top_missing['missing_pct']:.1f}% missing values. "
-                        f"This can reduce model accuracy and trend reliability."
+                        f"Column '{top_missing['column']}' has {top_missing['missing_pct']:.1f}% missing values "
+                        f"({summary['rows'] * top_missing['missing_pct'] / 100:.0f} out of {summary['rows']:,} rows). "
+                        f"This significantly impacts analysis reliability. "
+                        f"Additional columns with missing data: {len([m for m in missing_cols if m['missing_pct'] >= 10])} columns have >10% missing."
                     ),
-                    "impact": "high",
-                    "action": "Fill, impute, or remove sparse columns before final reporting."
+                    "impact": "critical" if top_missing["missing_pct"] >= 50 else "high",
+                    "action": (
+                        f"**Immediate**: Investigate data source for '{top_missing['column']}'. "
+                        f"**Options**: (1) Backfill from source, (2) Use imputation (mean/median), "
+                        f"(3) Exclude from critical analyses, (4) Flag as incomplete in reports."
+                    )
+                })
+            elif missing_cols[0]["missing_pct"] >= 10:
+                top_missing = missing_cols[0]
+                key_insights.append({
+                    "title": f"Data Completeness Alert: {top_missing['column']} in {ds_name}",
+                    "description": f"Column '{top_missing['column']}' has {top_missing['missing_pct']:.1f}% missing values.",
+                    "impact": "medium",
+                    "action": "Review data collection process and consider imputation strategies."
                 })
 
-        if summary.get("duplicates", 0) > 0:
+        # Duplicate analysis
+        dup_count = summary.get("duplicates", 0)
+        if dup_count > 0:
+            dup_pct = (dup_count / max(summary["rows"], 1)) * 100
             key_insights.append({
-                "title": f"Duplicate Records Detected in {summary['name']}",
-                "description": f"{summary['duplicates']:,} duplicate rows were found, which may distort aggregation results.",
-                "impact": "medium",
-                "action": "Remove duplicates or define unique keys for analysis."
+                "title": f"Duplicate Records: {ds_name}",
+                "description": (
+                    f"{dup_count:,} duplicate rows detected ({dup_pct:.1f}% of data). "
+                    f"This may inflate aggregations and distort statistical measures."
+                ),
+                "impact": "high" if dup_pct > 5 else "medium",
+                "action": (
+                    f"**Action**: Remove duplicates using unique key identification. "
+                    f"**Impact**: Will reduce dataset from {summary['rows']:,} to {summary['rows'] - dup_count:,} unique records."
+                )
             })
 
-        for col, outlier in summary.get("outliers", {}).items():
-            if outlier["pct"] >= 5:
+        # Statistical insights from numeric columns
+        stats = summary.get("stats", {})
+        for col, stat_data in list(stats.items())[:5]:
+            mean_val = stat_data.get("mean", 0)
+            std_val = stat_data.get("std", 0)
+            min_val = stat_data.get("min", 0)
+            max_val = stat_data.get("max", 0)
+            cv = (std_val / mean_val * 100) if mean_val != 0 else 0  # Coefficient of variation
+            
+            # High variance insight
+            if cv > 50 and mean_val > 0:
                 key_insights.append({
-                    "title": f"Outlier Concentration: {col} in {summary['name']}",
-                    "description": f"{outlier['pct']:.1f}% of values are outliers, indicating abnormal spikes or data errors.",
-                    "impact": "medium",
-                    "action": "Validate extreme values or isolate them for separate analysis."
-                })
-                break
-
-        for col, categories in summary.get("top_categories", {}).items():
-            if categories and categories[0]["count"] / max(summary["rows"], 1) > 0.8:
-                key_insights.append({
-                    "title": f"Category Concentration: {col} in {summary['name']}",
-                    "description": f"'{categories[0]['value']}' represents over 80% of the records, which may bias insights.",
-                    "impact": "medium",
-                    "action": "Segment analysis by smaller categories to uncover hidden patterns."
-                })
-                break
-
-        for corr in summary.get("top_correlations", []):
-            if corr["correlation"] >= 0.85:
-                key_insights.append({
-                    "title": f"Strong Correlation Found in {summary['name']}",
+                    "title": f"High Variability Detected: {col} in {ds_name}",
                     "description": (
-                        f"'{corr['column_1']}' and '{corr['column_2']}' show correlation {corr['correlation']:.2f}. "
-                        f"These metrics may represent the same underlying driver."
+                        f"Column '{col}' shows high variability (CV={cv:.1f}%, std={std_val:.2f}, mean={mean_val:.2f}). "
+                        f"Range spans from {min_val:.2f} to {max_val:.2f}. "
+                        f"This indicates significant spread in the data, suggesting multiple segments or outliers."
                     ),
                     "impact": "medium",
-                    "action": "Consider combining correlated metrics to simplify dashboards."
+                    "action": "Consider segmenting analysis by categorical dimensions to understand variance drivers."
                 })
                 break
 
+        # Outlier analysis
+        outliers = summary.get("outliers", {})
+        for col, out_data in list(outliers.items())[:3]:
+            if out_data["pct"] >= 5:
+                key_insights.append({
+                    "title": f"Outlier Detection: {col} in {ds_name}",
+                    "description": (
+                        f"{out_data['count']} outliers detected ({out_data['pct']:.1f}% of {summary['rows']:,} records) "
+                        f"in column '{col}'. These extreme values may represent errors, special cases, or high-value segments."
+                    ),
+                    "impact": "medium",
+                    "action": (
+                        f"**Investigation**: Review top/bottom values to validate. "
+                        f"**Strategy**: (1) Keep if legitimate, (2) Cap at reasonable limits, "
+                        f"(3) Create separate analysis for outlier segment."
+                    )
+                })
+                break
+
+        # Category concentration
+        top_cats = summary.get("top_categories", {})
+        for col, categories in list(top_cats.items())[:3]:
+            if categories and summary["rows"] > 0:
+                top_cat_pct = (categories[0]["count"] / summary["rows"]) * 100
+                if top_cat_pct > 80:
+                    key_insights.append({
+                        "title": f"Category Imbalance: {col} in {ds_name}",
+                        "description": (
+                            f"Column '{col}' is highly imbalanced: '{categories[0]['value']}' represents "
+                            f"{top_cat_pct:.1f}% of records ({categories[0]['count']:,} out of {summary['rows']:,}). "
+                            f"This concentration may bias analysis results."
+                        ),
+                        "impact": "medium",
+                        "action": "Consider stratified sampling or separate analysis for minority categories to ensure balanced insights."
+                    })
+                    break
+
+        # Strong correlations
+        correlations = summary.get("top_correlations", [])
+        for corr in correlations[:3]:
+            if corr["correlation"] >= 0.7:
+                key_insights.append({
+                    "title": f"Strong Relationship: {corr['column_1']} ↔ {corr['column_2']} in {ds_name}",
+                    "description": (
+                        f"Columns '{corr['column_1']}' and '{corr['column_2']}' show strong correlation "
+                        f"(r={corr['correlation']:.3f}). This suggests they measure related phenomena or have a causal relationship."
+                    ),
+                    "impact": "low",
+                    "action": (
+                        f"**Analysis**: Investigate if one metric can predict the other. "
+                        f"**Dashboard**: Consider showing both or selecting the more actionable metric."
+                    )
+                })
+                break
+
+    # Generate insights from merged dataset if available
+    if merged_summary:
+        merged_stats = merged_summary.get("stats", {})
+        if merged_stats:
+            # Find top performing metrics
+            top_metrics = sorted(
+                [(col, s) for col, s in merged_stats.items()],
+                key=lambda x: abs(x[1].get("mean", 0)),
+                reverse=True
+            )[:3]
+            
+            if top_metrics:
+                key_insights.append({
+                    "title": "Top Metrics in Merged Dataset",
+                    "description": (
+                        f"Key metrics identified: {', '.join([m[0] for m in top_metrics])}. "
+                        f"These represent the primary KPIs across your combined datasets."
+                    ),
+                    "impact": "medium",
+                    "action": "Prioritize these metrics in dashboard design and executive reporting."
+                })
+
+    # Fallback if no insights generated
     if not key_insights:
         key_insights.append({
-            "title": "Data Overview Complete",
-            "description": "No critical data quality or statistical anomalies detected. Data appears suitable for dashboards.",
+            "title": "Data Quality Assessment Complete",
+            "description": (
+                f"Analyzed {total_sheets} dataset(s) with {total_rows:,} total records. "
+                f"Data quality appears good with minimal anomalies detected. "
+                f"Ready for dashboard generation and deeper analysis."
+            ),
             "impact": "low",
-            "action": "Proceed with KPI selection and dashboard generation."
+            "action": "Proceed with KPI selection and dashboard creation using the identified numeric and categorical columns."
         })
 
+    # Enhanced recommendations
     recommendations.append({
         "category": "Dashboard Design",
-        "priority": "medium",
+        "priority": "high",
         "action": "Build KPI-focused dashboards",
         "details": [
-            "Highlight top numeric KPIs with trend charts",
-            "Show category distributions for key dimensions",
-            "Include missing value and data quality panels"
+            f"Highlight top {min(5, len(numeric_cols_all))} numeric KPIs with trend charts and comparisons",
+            f"Show distributions for {min(3, len(categorical_cols_all))} key categorical dimensions",
+            "Include data quality panels showing completeness and outlier flags",
+            "Add correlation heatmaps for numeric metrics",
+            "Create summary cards with key statistics (mean, median, min, max)"
         ]
     })
+
+    if critical_issues:
+        recommendations.append({
+            "category": "Data Quality - CRITICAL",
+            "priority": "critical",
+            "action": "Address Missing Data Issues",
+            "details": critical_issues[:5] + ["Review data collection processes", "Implement data validation rules"]
+        })
 
     if merged_summary and merge_summary:
         recommendations.append({
             "category": "Data Integration",
             "priority": "medium",
-            "action": "Validate merged dataset",
+            "action": "Validate and optimize merged dataset",
             "details": [
-                f"Merge method: {merge_summary.get('method', 'N/A')}",
-                f"Records: {merge_summary.get('total_records', 0):,}",
-                f"Columns: {merge_summary.get('columns', 0)}"
+                f"Merge method used: {merge_summary.get('method', 'N/A')}",
+                f"Final dataset: {merge_summary.get('total_records', 0):,} records × {merge_summary.get('columns', 0)} columns",
+                "Verify merge key accuracy and completeness",
+                "Check for data type consistency across merged columns"
             ]
         })
 
@@ -257,34 +383,77 @@ def _generate_rule_based_insights(dataset_summaries: List[Dict], merged_summary:
 
 def _generate_llm_insights(dataset_summaries: List[Dict], merged_summary: Dict,
                            merge_summary: Dict, llm_config: Dict) -> Dict:
-    """Call Groq Llama 3.3 to generate narrative insights. Returns JSON if successful."""
+    """Call Groq Llama 3.3 to generate high-quality narrative insights. Returns JSON if successful."""
     api_key = llm_config.get("api_key") or os.getenv("GROQ_API_KEY", "")
     if not api_key:
         return None
 
     model = llm_config.get("model", "llama-3.3-70b-versatile")
-    temperature = llm_config.get("temperature", 0.2)
+    temperature = llm_config.get("temperature", 0.3)
+
+    # Format data summary for LLM in a more readable way
+    data_context = _format_data_for_llm(dataset_summaries, merged_summary, merge_summary)
+
+    system_prompt = """You are an expert data analyst and business intelligence consultant. Your task is to analyze Excel workbook data and generate actionable, executive-level insights.
+
+CRITICAL REQUIREMENTS:
+1. Analyze the actual data statistics, patterns, and anomalies provided
+2. Generate SPECIFIC insights based on the numbers, not generic statements
+3. Identify business opportunities, risks, and actionable recommendations
+4. Use the statistical summaries, correlations, outliers, and missing data patterns
+5. Write in clear, professional business language suitable for executives
+
+OUTPUT FORMAT (JSON only, no markdown):
+{
+  "executive_summary": "2-3 sentence high-level summary of key findings",
+  "key_insights": [
+    {
+      "title": "Specific insight title (e.g., 'Revenue Concentration Risk in Top 3 Categories')",
+      "description": "Detailed explanation with specific numbers and context",
+      "impact": "critical|high|medium|low",
+      "action": "Specific actionable recommendation"
+    }
+  ],
+  "recommendations": [
+    {
+      "category": "Category name (e.g., 'Data Quality', 'Business Strategy', 'Risk Management')",
+      "priority": "critical|high|medium|low",
+      "action": "Specific action item",
+      "details": ["Detail 1", "Detail 2"]
+    }
+  ]
+}
+
+INSIGHT QUALITY STANDARDS:
+- Reference specific metrics, percentages, and numbers from the data
+- Identify trends, anomalies, and patterns
+- Connect data points to business implications
+- Prioritize insights by business impact
+- Provide concrete, actionable recommendations"""
+
+    user_prompt = f"""Analyze the following Excel workbook data and generate comprehensive insights:
+
+{data_context}
+
+Based on this data analysis, generate:
+1. An executive summary highlighting the most important findings
+2. 3-5 key insights that are specific, data-driven, and actionable
+3. 2-4 recommendations with clear priorities and action items
+
+Focus on:
+- Data quality issues (missing values, duplicates, outliers)
+- Statistical patterns (correlations, distributions, trends)
+- Business implications (risks, opportunities, performance gaps)
+- Actionable next steps
+
+Return ONLY valid JSON matching the format specified above."""
 
     payload = {
         "model": model,
         "temperature": temperature,
         "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are a data analyst. Return JSON only with keys: "
-                    "executive_summary (string), key_insights (list of objects with title, description, impact, action), "
-                    "recommendations (list of objects with category, priority, action, details)."
-                )
-            },
-            {
-                "role": "user",
-                "content": json.dumps({
-                    "dataset_summaries": dataset_summaries[:6],
-                    "merged_summary": merged_summary,
-                    "merge_summary": merge_summary
-                })
-            }
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
         ]
     }
 
@@ -298,17 +467,150 @@ def _generate_llm_insights(dataset_summaries: List[Dict], merged_summary: Dict,
             },
             method="POST"
         )
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with urllib.request.urlopen(request, timeout=90) as response:
             content = response.read().decode("utf-8")
         data = json.loads(content)
         message = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        json_start = message.find("{")
-        json_end = message.rfind("}")
-        if json_start == -1 or json_end == -1:
-            return None
-        return json.loads(message[json_start:json_end + 1])
-    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, ValueError):
+        
+        # Robust JSON extraction
+        result = None
+        
+        # Method 1: Try direct JSON parse
+        try:
+            result = json.loads(message.strip())
+        except json.JSONDecodeError:
+            # Method 2: Extract JSON from markdown code blocks (```json ... ```)
+            import re
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', message, re.DOTALL)
+            if json_match:
+                try:
+                    result = json.loads(json_match.group(1))
+                except json.JSONDecodeError:
+                    pass
+        
+        # Method 3: Find first { and last } and try to parse
+        if result is None:
+            json_start = message.find("{")
+            json_end = message.rfind("}")
+            if json_start != -1 and json_end != -1 and json_end > json_start:
+                try:
+                    result = json.loads(message[json_start:json_end + 1])
+                except json.JSONDecodeError:
+                    pass
+        
+        # Validate and return
+        if result and isinstance(result, dict):
+            if "executive_summary" in result and "key_insights" in result:
+                # Ensure key_insights is a list
+                if not isinstance(result["key_insights"], list):
+                    result["key_insights"] = []
+                # Ensure recommendations exists
+                if "recommendations" not in result:
+                    result["recommendations"] = []
+                return result
+        
         return None
+    except (urllib.error.URLError, urllib.error.HTTPError) as e:
+        print(f"LLM API HTTP error: {str(e)}")
+        return None
+    except json.JSONDecodeError as e:
+        print(f"LLM API JSON decode error: {str(e)}")
+        return None
+    except Exception as e:
+        print(f"LLM API unexpected error: {str(e)}")
+        return None
+
+
+def _format_data_for_llm(dataset_summaries: List[Dict], merged_summary: Dict, merge_summary: Dict) -> str:
+    """Format data summaries into a readable text format for LLM analysis."""
+    lines = []
+    lines.append("=" * 60)
+    lines.append("EXCEL WORKBOOK DATA ANALYSIS SUMMARY")
+    lines.append("=" * 60)
+    lines.append("")
+    
+    # Individual datasets
+    if dataset_summaries:
+        lines.append(f"INDIVIDUAL DATASETS ({len(dataset_summaries)} sheets):")
+        lines.append("-" * 60)
+        for idx, ds in enumerate(dataset_summaries[:6], 1):
+            lines.append(f"\n{idx}. {ds.get('name', 'Unknown Dataset')}")
+            lines.append(f"   Rows: {ds.get('rows', 0):,} | Columns: {ds.get('columns', 0)}")
+            
+            # Numeric columns and stats
+            numeric = ds.get('numeric_columns', [])
+            if numeric:
+                lines.append(f"   Numeric Columns ({len(numeric)}): {', '.join(numeric[:5])}")
+                stats = ds.get('stats', {})
+                for col in list(stats.keys())[:3]:
+                    s = stats[col]
+                    lines.append(f"     - {col}: mean={s.get('mean', 0):.2f}, min={s.get('min', 0):.2f}, max={s.get('max', 0):.2f}, std={s.get('std', 0):.2f}")
+            
+            # Categorical columns
+            categorical = ds.get('categorical_columns', [])
+            if categorical:
+                lines.append(f"   Categorical Columns ({len(categorical)}): {', '.join(categorical[:5])}")
+                top_cats = ds.get('top_categories', {})
+                for col, cats in list(top_cats.items())[:2]:
+                    if cats:
+                        top_val = cats[0]
+                        lines.append(f"     - {col}: Top value '{top_val['value']}' appears {top_val['count']} times")
+            
+            # Missing data
+            missing = ds.get('missing_columns', [])
+            if missing:
+                lines.append(f"   Data Quality Issues:")
+                for m in missing[:3]:
+                    lines.append(f"     - {m['column']}: {m['missing_pct']:.1f}% missing values")
+            
+            # Outliers
+            outliers = ds.get('outliers', {})
+            if outliers:
+                for col, out in list(outliers.items())[:2]:
+                    lines.append(f"     - {col}: {out['count']} outliers ({out['pct']:.1f}% of data)")
+            
+            # Correlations
+            corr = ds.get('top_correlations', [])
+            if corr:
+                lines.append(f"   Key Correlations:")
+                for c in corr[:3]:
+                    lines.append(f"     - {c['column_1']} ↔ {c['column_2']}: {c['correlation']:.3f}")
+            
+            if ds.get('duplicates', 0) > 0:
+                lines.append(f"   ⚠️ {ds['duplicates']:,} duplicate rows detected")
+    
+    # Merged dataset
+    if merged_summary:
+        lines.append("")
+        lines.append("=" * 60)
+        lines.append("MERGED DATASET (Combined Analysis)")
+        lines.append("=" * 60)
+        lines.append(f"Total Rows: {merged_summary.get('rows', 0):,}")
+        lines.append(f"Total Columns: {merged_summary.get('columns', 0)}")
+        
+        numeric = merged_summary.get('numeric_columns', [])
+        if numeric:
+            lines.append(f"Numeric Columns: {', '.join(numeric[:8])}")
+        
+        stats = merged_summary.get('stats', {})
+        if stats:
+            lines.append("\nKey Statistics:")
+            for col, s in list(stats.items())[:5]:
+                lines.append(f"  {col}: mean={s.get('mean', 0):.2f}, range=[{s.get('min', 0):.2f}, {s.get('max', 0):.2f}], std={s.get('std', 0):.2f}")
+    
+    # Merge summary
+    if merge_summary:
+        lines.append("")
+        lines.append("=" * 60)
+        lines.append("DATA INTEGRATION SUMMARY")
+        lines.append("=" * 60)
+        lines.append(f"Merge Method: {merge_summary.get('method', 'N/A')}")
+        if merge_summary.get('merge_key'):
+            lines.append(f"Merge Key: {merge_summary.get('merge_key')}")
+        lines.append(f"Files Processed: {merge_summary.get('files_processed', 0)}")
+        lines.append(f"Total Records: {merge_summary.get('total_records', 0):,}")
+    
+    return "\n".join(lines)
 
 
 def analyze_data(df: pd.DataFrame, merge_summary: Dict = None) -> Dict:

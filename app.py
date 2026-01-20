@@ -121,10 +121,6 @@ if 'processing_log' not in st.session_state:
     st.session_state.processing_log = []
 if 'current_step' not in st.session_state:
     st.session_state.current_step = 1
-if 'groq_api_key' not in st.session_state:
-    st.session_state.groq_api_key = ""
-if 'groq_model' not in st.session_state:
-    st.session_state.groq_model = "llama-3.3-70b-versatile"
 
 # Initialize processors
 file_processor = FileProcessor()
@@ -137,9 +133,6 @@ st.markdown('<p class="sub-header">Upload → Analyze → Generate Dashboards & 
 # Sidebar - Simplified Navigation
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/000000/artificial-intelligence.png", width=80)
-    st.markdown("### 🤖 AI Settings")
-    st.text_input("Groq API Key", type="password", key="groq_api_key", help="Optional. Enables Llama 3.3 insights.")
-    st.selectbox("Model", ["llama-3.3-70b-versatile", "llama-3.3-8b-versatile"], key="groq_model")
     
     # Progress Indicator
     if st.session_state.merged_data is not None:
@@ -350,8 +343,8 @@ elif page == "upload":
                         status_text.text("🤖 Running AI analysis...")
                         try:
                             llm_config = {
-                                "api_key": st.session_state.groq_api_key,
-                                "model": st.session_state.groq_model,
+                                "api_key": st.secrets.get("GROQ_API_KEY", ""),
+                                "model": "llama-3.3-70b-versatile",
                                 "temperature": 0.2
                             }
                             insights = ai_insights_engine.analyze_workbooks(

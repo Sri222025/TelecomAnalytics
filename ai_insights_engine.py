@@ -8,7 +8,7 @@ import numpy as np
 from typing import Dict, List, Any, Tuple
 import re
 import json
-import osac
+import os
 import urllib.request
 import urllib.error
 

@@ -153,229 +153,272 @@ def _summarize_dataset(df: pd.DataFrame, name: str) -> Dict:
 
 
 def _generate_rule_based_insights(dataset_summaries: List[Dict], merged_summary: Dict, merge_summary: Dict) -> Tuple[str, List[Dict], List[Dict]]:
-    """Generate comprehensive data-driven insights without LLM dependency."""
+    """Generate business-focused insights for executive decision-making."""
     total_rows = sum(s.get("rows", 0) for s in dataset_summaries)
     total_sheets = len(dataset_summaries)
     
-    # Build comprehensive executive summary
-    exec_parts = [f"Analyzed {total_sheets} sheet(s) with {total_rows:,} total rows."]
+    # Use merged dataset if available, otherwise use first dataset
+    primary_data = merged_summary if merged_summary else (dataset_summaries[0] if dataset_summaries else None)
     
-    if merged_summary:
-        exec_parts.append(f"Merged dataset contains {merged_summary.get('rows', 0):,} records across {merged_summary.get('columns', 0)} columns.")
+    if not primary_data:
+        return "No data available for analysis.", [], []
     
-    numeric_cols_all = set()
-    categorical_cols_all = set()
-    for s in dataset_summaries:
-        numeric_cols_all.update(s.get("numeric_columns", []))
-        categorical_cols_all.update(s.get("categorical_columns", []))
-    
-    if numeric_cols_all:
-        exec_parts.append(f"Identified {len(numeric_cols_all)} numeric metrics and {len(categorical_cols_all)} categorical dimensions for analysis.")
-    
-    executive_summary = " ".join(exec_parts)
-
+    # Build executive summary with key findings
+    exec_parts = []
     key_insights = []
     recommendations = []
-
-    # Data quality insights with more detail
-    critical_issues = []
-    for summary in dataset_summaries:
-        ds_name = summary.get('name', 'Dataset')
+    
+    # Analyze business metrics and patterns
+    stats = primary_data.get("stats", {})
+    top_categories = primary_data.get("top_categories", {})
+    correlations = primary_data.get("top_correlations", [])
+    
+    # 1. TOP PERFORMERS & OPPORTUNITIES
+    if stats:
+        # Find highest value metrics
+        sorted_metrics = sorted(
+            [(col, s) for col, s in stats.items()],
+            key=lambda x: abs(x[1].get("mean", 0)),
+            reverse=True
+        )
         
-        # Missing data analysis
-        missing_cols = summary.get("missing_columns", [])
-        if missing_cols:
-            high_missing = [m for m in missing_cols if m["missing_pct"] >= 30]
-            if high_missing:
-                top_missing = high_missing[0]
-                critical_issues.append(f"{ds_name}: {top_missing['column']} ({top_missing['missing_pct']:.1f}% missing)")
+        if sorted_metrics:
+            top_metric = sorted_metrics[0]
+            col_name, stat_data = top_metric
+            mean_val = stat_data.get("mean", 0)
+            max_val = stat_data.get("max", 0)
+            min_val = stat_data.get("min", 0)
+            
+            # Performance spread analysis
+            spread = max_val - min_val
+            spread_pct = (spread / abs(mean_val) * 100) if mean_val != 0 else 0
+            
+            if spread_pct > 50:  # Significant variation
                 key_insights.append({
-                    "title": f"Critical Data Gap: {top_missing['column']} in {ds_name}",
+                    "title": f"Performance Opportunity: {col_name} Shows {spread_pct:.0f}% Variation",
                     "description": (
-                        f"Column '{top_missing['column']}' has {top_missing['missing_pct']:.1f}% missing values "
-                        f"({summary['rows'] * top_missing['missing_pct'] / 100:.0f} out of {summary['rows']:,} rows). "
-                        f"This significantly impacts analysis reliability. "
-                        f"Additional columns with missing data: {len([m for m in missing_cols if m['missing_pct'] >= 10])} columns have >10% missing."
+                        f"**Current State**: {col_name} ranges from {min_val:,.2f} to {max_val:,.2f} "
+                        f"(average: {mean_val:,.2f}). **Gap Analysis**: {spread:,.2f} point spread indicates "
+                        f"significant performance differences. **Opportunity**: Top performers achieve {max_val:,.2f} "
+                        f"while bottom performers are at {min_val:,.2f} - closing this gap could drive "
+                        f"{((max_val - mean_val) / mean_val * 100):.1f}% improvement in average performance."
                     ),
-                    "impact": "critical" if top_missing["missing_pct"] >= 50 else "high",
+                    "impact": "high",
                     "action": (
-                        f"**Immediate**: Investigate data source for '{top_missing['column']}'. "
-                        f"**Options**: (1) Backfill from source, (2) Use imputation (mean/median), "
-                        f"(3) Exclude from critical analyses, (4) Flag as incomplete in reports."
+                        f"**Strategic Action**: (1) Identify top 20% performers by {col_name} and analyze success factors. "
+                        f"(2) Develop best practice playbook. (3) Deploy to bottom 20% performers. "
+                        f"**Expected Impact**: Potential {((max_val - mean_val) / mean_val * 50):.1f}% improvement in "
+                        f"underperformers within 90 days."
                     )
                 })
-            elif missing_cols[0]["missing_pct"] >= 10:
-                top_missing = missing_cols[0]
+            
+            # High-value metric identification
+            if len(sorted_metrics) >= 2:
+                top_3_metrics = [m[0] for m in sorted_metrics[:3]]
                 key_insights.append({
-                    "title": f"Data Completeness Alert: {top_missing['column']} in {ds_name}",
-                    "description": f"Column '{top_missing['column']}' has {top_missing['missing_pct']:.1f}% missing values.",
-                    "impact": "medium",
-                    "action": "Review data collection process and consider imputation strategies."
+                    "title": f"Key Performance Indicators: {', '.join(top_3_metrics)}",
+                    "description": (
+                        f"**Primary Metrics**: {top_3_metrics[0]} averages {sorted_metrics[0][1].get('mean', 0):,.2f}, "
+                        f"representing the highest-value metric in your dataset. "
+                        f"**Secondary Metrics**: {', '.join(top_3_metrics[1:])} provide additional performance dimensions. "
+                        f"**Strategic Focus**: Prioritize initiatives that directly impact these top 3 metrics."
+                    ),
+                    "impact": "high",
+                    "action": (
+                        f"**Dashboard Priority**: Feature {top_3_metrics[0]} as primary KPI. "
+                        f"**Monitoring**: Track weekly trends. **Target Setting**: Set targets at "
+                        f"{sorted_metrics[0][1].get('mean', 0) * 1.15:,.2f} (15% above current average)."
+                    )
                 })
-
-        # Duplicate analysis
-        dup_count = summary.get("duplicates", 0)
-        if dup_count > 0:
-            dup_pct = (dup_count / max(summary["rows"], 1)) * 100
+    
+    # 2. CATEGORY PERFORMANCE ANALYSIS
+    for col, categories in list(top_categories.items())[:3]:
+        if categories and len(categories) >= 2:
+            top_cat = categories[0]
+            second_cat = categories[1]
+            total_count = sum(c["count"] for c in categories)
+            
+            top_pct = (top_cat["count"] / total_count * 100) if total_count > 0 else 0
+            second_pct = (second_cat["count"] / total_count * 100) if total_count > 0 else 0
+            
+            # Concentration risk
+            if top_pct > 60:
+                key_insights.append({
+                    "title": f"Market Concentration: {col} Dominated by '{top_cat['value']}'",
+                    "description": (
+                        f"**Distribution**: '{top_cat['value']}' represents {top_pct:.1f}% of records "
+                        f"({top_cat['count']:,} out of {total_count:,}), followed by '{second_cat['value']}' "
+                        f"at {second_pct:.1f}%. **Risk**: High concentration creates dependency risk. "
+                        f"**Opportunity**: Diversification could reduce risk and unlock growth in underperforming segments."
+                    ),
+                    "impact": "high" if top_pct > 80 else "medium",
+                    "action": (
+                        f"**Diversification Strategy**: (1) Analyze why '{top_cat['value']}' dominates. "
+                        f"(2) Develop growth plan for '{second_cat['value']}' and other segments. "
+                        f"(3) Target: Reduce top category to <60% within 6 months. "
+                        f"**Risk Mitigation**: Build resilience by reducing over-reliance on single segment."
+                    )
+                })
+            # Balanced distribution opportunity
+            elif top_pct < 40 and len(categories) >= 3:
+                key_insights.append({
+                    "title": f"Balanced Portfolio: {col} Shows Healthy Distribution",
+                    "description": (
+                        f"**Distribution**: Top category '{top_cat['value']}' represents {top_pct:.1f}%, "
+                        f"indicating balanced spread across {len(categories)} segments. "
+                        f"**Strength**: Lower concentration risk and diversified portfolio. "
+                        f"**Opportunity**: Focus on optimizing each segment rather than consolidation."
+                    ),
+                    "impact": "medium",
+                    "action": (
+                        f"**Optimization**: Develop segment-specific strategies for each of the top {min(5, len(categories))} categories. "
+                        f"**Growth**: Target 10-15% improvement in each segment rather than focusing on one."
+                    )
+                })
+    
+    # 3. CORRELATION & RELATIONSHIP INSIGHTS
+    strong_corrs = [c for c in correlations if c.get("correlation", 0) >= 0.7]
+    if strong_corrs:
+        top_corr = strong_corrs[0]
+        key_insights.append({
+            "title": f"Key Relationship: {top_corr['column_1']} Drives {top_corr['column_2']}",
+            "description": (
+                f"**Correlation**: {top_corr['column_1']} and {top_corr['column_2']} show strong relationship "
+                f"(r={top_corr['correlation']:.3f}). **Implication**: Changes in {top_corr['column_1']} likely "
+                f"influence {top_corr['column_2']}. **Strategic Value**: Optimizing {top_corr['column_1']} "
+                f"could have cascading positive effects on {top_corr['column_2']}."
+            ),
+            "impact": "high",
+            "action": (
+                f"**Leverage Point**: Focus improvement efforts on {top_corr['column_1']} as primary driver. "
+                f"**Measurement**: Track both metrics together to validate relationship. "
+                f"**Target**: Improve {top_corr['column_1']} by 10% to drive corresponding improvement in {top_corr['column_2']}."
+            )
+        })
+    
+    # 4. OUTLIER OPPORTUNITIES (High performers or anomalies)
+    outliers = primary_data.get("outliers", {})
+    for col, out_data in list(outliers.items())[:2]:
+        if out_data["pct"] >= 3:  # At least 3% outliers
             key_insights.append({
-                "title": f"Duplicate Records: {ds_name}",
+                "title": f"High-Value Segment: {col} Contains {out_data['pct']:.1f}% Exceptional Cases",
                 "description": (
-                    f"{dup_count:,} duplicate rows detected ({dup_pct:.1f}% of data). "
-                    f"This may inflate aggregations and distort statistical measures."
+                    f"**Finding**: {out_data['count']} records ({out_data['pct']:.1f}%) in {col} are outliers, "
+                    f"representing exceptional performance or high-value cases. **Opportunity**: These outliers may "
+                    f"represent best practices, premium segments, or untapped potential. **Action Required**: "
+                    f"Deep-dive analysis to understand what makes these cases exceptional."
                 ),
-                "impact": "high" if dup_pct > 5 else "medium",
+                "impact": "high",
                 "action": (
-                    f"**Action**: Remove duplicates using unique key identification. "
-                    f"**Impact**: Will reduce dataset from {summary['rows']:,} to {summary['rows'] - dup_count:,} unique records."
+                    f"**Investigation**: (1) Identify characteristics of outlier records. "
+                    f"(2) Determine if they represent replicable best practices. "
+                    f"(3) If yes, scale these practices. If no, understand why they're exceptional. "
+                    f"**Potential**: Could unlock {out_data['pct']:.1f}% of portfolio to similar performance levels."
                 )
             })
-
-        # Statistical insights from numeric columns
-        stats = summary.get("stats", {})
-        for col, stat_data in list(stats.items())[:5]:
+            break
+    
+    # 5. STATISTICAL PERFORMANCE GAPS
+    if stats and len(stats) >= 2:
+        # Find metrics with highest variance (opportunity for improvement)
+        high_variance_metrics = []
+        for col, stat_data in stats.items():
             mean_val = stat_data.get("mean", 0)
             std_val = stat_data.get("std", 0)
-            min_val = stat_data.get("min", 0)
-            max_val = stat_data.get("max", 0)
-            cv = (std_val / mean_val * 100) if mean_val != 0 else 0  # Coefficient of variation
-            
-            # High variance insight
-            if cv > 50 and mean_val > 0:
-                key_insights.append({
-                    "title": f"High Variability Detected: {col} in {ds_name}",
-                    "description": (
-                        f"Column '{col}' shows high variability (CV={cv:.1f}%, std={std_val:.2f}, mean={mean_val:.2f}). "
-                        f"Range spans from {min_val:.2f} to {max_val:.2f}. "
-                        f"This indicates significant spread in the data, suggesting multiple segments or outliers."
-                    ),
-                    "impact": "medium",
-                    "action": "Consider segmenting analysis by categorical dimensions to understand variance drivers."
-                })
-                break
-
-        # Outlier analysis
-        outliers = summary.get("outliers", {})
-        for col, out_data in list(outliers.items())[:3]:
-            if out_data["pct"] >= 5:
-                key_insights.append({
-                    "title": f"Outlier Detection: {col} in {ds_name}",
-                    "description": (
-                        f"{out_data['count']} outliers detected ({out_data['pct']:.1f}% of {summary['rows']:,} records) "
-                        f"in column '{col}'. These extreme values may represent errors, special cases, or high-value segments."
-                    ),
-                    "impact": "medium",
-                    "action": (
-                        f"**Investigation**: Review top/bottom values to validate. "
-                        f"**Strategy**: (1) Keep if legitimate, (2) Cap at reasonable limits, "
-                        f"(3) Create separate analysis for outlier segment."
-                    )
-                })
-                break
-
-        # Category concentration
-        top_cats = summary.get("top_categories", {})
-        for col, categories in list(top_cats.items())[:3]:
-            if categories and summary["rows"] > 0:
-                top_cat_pct = (categories[0]["count"] / summary["rows"]) * 100
-                if top_cat_pct > 80:
-                    key_insights.append({
-                        "title": f"Category Imbalance: {col} in {ds_name}",
-                        "description": (
-                            f"Column '{col}' is highly imbalanced: '{categories[0]['value']}' represents "
-                            f"{top_cat_pct:.1f}% of records ({categories[0]['count']:,} out of {summary['rows']:,}). "
-                            f"This concentration may bias analysis results."
-                        ),
-                        "impact": "medium",
-                        "action": "Consider stratified sampling or separate analysis for minority categories to ensure balanced insights."
-                    })
-                    break
-
-        # Strong correlations
-        correlations = summary.get("top_correlations", [])
-        for corr in correlations[:3]:
-            if corr["correlation"] >= 0.7:
-                key_insights.append({
-                    "title": f"Strong Relationship: {corr['column_1']} ↔ {corr['column_2']} in {ds_name}",
-                    "description": (
-                        f"Columns '{corr['column_1']}' and '{corr['column_2']}' show strong correlation "
-                        f"(r={corr['correlation']:.3f}). This suggests they measure related phenomena or have a causal relationship."
-                    ),
-                    "impact": "low",
-                    "action": (
-                        f"**Analysis**: Investigate if one metric can predict the other. "
-                        f"**Dashboard**: Consider showing both or selecting the more actionable metric."
-                    )
-                })
-                break
-
-    # Generate insights from merged dataset if available
-    if merged_summary:
-        merged_stats = merged_summary.get("stats", {})
-        if merged_stats:
-            # Find top performing metrics
-            top_metrics = sorted(
-                [(col, s) for col, s in merged_stats.items()],
-                key=lambda x: abs(x[1].get("mean", 0)),
-                reverse=True
-            )[:3]
-            
-            if top_metrics:
-                key_insights.append({
-                    "title": "Top Metrics in Merged Dataset",
-                    "description": (
-                        f"Key metrics identified: {', '.join([m[0] for m in top_metrics])}. "
-                        f"These represent the primary KPIs across your combined datasets."
-                    ),
-                    "impact": "medium",
-                    "action": "Prioritize these metrics in dashboard design and executive reporting."
-                })
-
-    # Fallback if no insights generated
-    if not key_insights:
-        key_insights.append({
-            "title": "Data Quality Assessment Complete",
-            "description": (
-                f"Analyzed {total_sheets} dataset(s) with {total_rows:,} total records. "
-                f"Data quality appears good with minimal anomalies detected. "
-                f"Ready for dashboard generation and deeper analysis."
-            ),
-            "impact": "low",
-            "action": "Proceed with KPI selection and dashboard creation using the identified numeric and categorical columns."
+            cv = (std_val / abs(mean_val) * 100) if mean_val != 0 else 0
+            if cv > 40 and mean_val > 0:  # High coefficient of variation
+                high_variance_metrics.append((col, cv, mean_val, std_val))
+        
+        if high_variance_metrics:
+            top_var = sorted(high_variance_metrics, key=lambda x: x[1], reverse=True)[0]
+            col_name, cv, mean_val, std_val = top_var
+            key_insights.append({
+                "title": f"Improvement Opportunity: {col_name} Has High Performance Variance",
+                "description": (
+                    f"**Variance Analysis**: {col_name} shows {cv:.1f}% coefficient of variation "
+                    f"(mean: {mean_val:,.2f}, std: {std_val:,.2f}). **Interpretation**: Significant performance "
+                    f"differences exist. **Opportunity**: Standardizing performance to the top quartile could "
+                    f"drive substantial overall improvement."
+                ),
+                "impact": "medium",
+                "action": (
+                    f"**Standardization**: (1) Benchmark top quartile performance in {col_name}. "
+                    f"(2) Identify success factors. (3) Deploy to lower performers. "
+                    f"**Expected**: Reduce variance by 30% within 120 days."
+                )
+            })
+    
+    # 6. EXECUTIVE SUMMARY
+    if key_insights:
+        high_impact = [i for i in key_insights if i.get("impact") in ["critical", "high"]]
+        exec_parts.append(
+            f"Analysis of {total_rows:,} records reveals {len(high_impact)} high-priority opportunities "
+            f"and {len(key_insights)} strategic insights for decision-making."
+        )
+    else:
+        # Fallback: Generate basic business insights
+        if stats:
+            top_metric = list(stats.items())[0]
+            exec_parts.append(
+                f"Analysis of {total_rows:,} records identifies {top_metric[0]} as primary KPI "
+                f"(average: {top_metric[1].get('mean', 0):,.2f})."
+            )
+        else:
+            exec_parts.append(f"Analyzed {total_rows:,} records across {total_sheets} dataset(s).")
+    
+    executive_summary = " ".join(exec_parts) if exec_parts else f"Analyzed {total_rows:,} records."
+    
+    # 7. STRATEGIC RECOMMENDATIONS
+    if key_insights:
+        recommendations.append({
+            "category": "Strategic Priorities",
+            "priority": "high",
+            "action": "Focus on Top Performance Opportunities",
+            "details": [
+                f"Prioritize the {len([i for i in key_insights if i.get('impact') == 'high'])} high-impact opportunities identified",
+                "Develop action plans for top 3 insights within 30 days",
+                "Establish KPI tracking and weekly review cadence",
+                "Set performance targets based on top quartile benchmarks"
+            ]
         })
-
-    # Enhanced recommendations
+    
+    if correlations:
+        recommendations.append({
+            "category": "Performance Optimization",
+            "priority": "medium",
+            "action": "Leverage Key Relationships",
+            "details": [
+                f"Focus improvement efforts on metrics that drive other KPIs (identified {len(strong_corrs)} strong relationships)",
+                "Create cross-functional initiatives to optimize correlated metrics together",
+                "Measure cascading impact of improvements"
+            ]
+        })
+    
     recommendations.append({
-        "category": "Dashboard Design",
+        "category": "Dashboard & Monitoring",
         "priority": "high",
-        "action": "Build KPI-focused dashboards",
+        "action": "Build Executive Dashboard",
         "details": [
-            f"Highlight top {min(5, len(numeric_cols_all))} numeric KPIs with trend charts and comparisons",
-            f"Show distributions for {min(3, len(categorical_cols_all))} key categorical dimensions",
-            "Include data quality panels showing completeness and outlier flags",
-            "Add correlation heatmaps for numeric metrics",
-            "Create summary cards with key statistics (mean, median, min, max)"
+            f"Feature top {min(5, len(stats))} KPIs with trend analysis",
+            "Include performance distribution charts to show variance",
+            "Add category breakdowns for key dimensions",
+            "Set up alerts for performance gaps and opportunities"
         ]
     })
-
-    if critical_issues:
-        recommendations.append({
-            "category": "Data Quality - CRITICAL",
-            "priority": "critical",
-            "action": "Address Missing Data Issues",
-            "details": critical_issues[:5] + ["Review data collection processes", "Implement data validation rules"]
-        })
-
-    if merged_summary and merge_summary:
-        recommendations.append({
-            "category": "Data Integration",
-            "priority": "medium",
-            "action": "Validate and optimize merged dataset",
-            "details": [
-                f"Merge method used: {merge_summary.get('method', 'N/A')}",
-                f"Final dataset: {merge_summary.get('total_records', 0):,} records × {merge_summary.get('columns', 0)} columns",
-                "Verify merge key accuracy and completeness",
-                "Check for data type consistency across merged columns"
-            ]
+    
+    # Fallback if no insights
+    if not key_insights and stats:
+        top_metric = list(stats.items())[0]
+        key_insights.append({
+            "title": f"Primary KPI: {top_metric[0]}",
+            "description": (
+                f"**Current Performance**: {top_metric[0]} averages {top_metric[1].get('mean', 0):,.2f} "
+                f"across {total_rows:,} records (range: {top_metric[1].get('min', 0):,.2f} to "
+                f"{top_metric[1].get('max', 0):,.2f}). **Next Steps**: Establish baseline, set targets, "
+                f"and track trends over time."
+            ),
+            "impact": "medium",
+            "action": "Set performance targets and implement tracking dashboard."
         })
 
     return executive_summary, key_insights, recommendations
@@ -394,57 +437,73 @@ def _generate_llm_insights(dataset_summaries: List[Dict], merged_summary: Dict,
     # Format data summary for LLM in a more readable way
     data_context = _format_data_for_llm(dataset_summaries, merged_summary, merge_summary)
 
-    system_prompt = """You are an expert data analyst and business intelligence consultant. Your task is to analyze Excel workbook data and generate actionable, executive-level insights.
+    system_prompt = """You are a strategic business analyst and executive advisor. Your role is to analyze Excel data and generate BOARD-LEVEL BUSINESS INSIGHTS that help executives make strategic decisions.
 
-CRITICAL REQUIREMENTS:
-1. Analyze the actual data statistics, patterns, and anomalies provided
-2. Generate SPECIFIC insights based on the numbers, not generic statements
-3. Identify business opportunities, risks, and actionable recommendations
-4. Use the statistical summaries, correlations, outliers, and missing data patterns
-5. Write in clear, professional business language suitable for executives
+CRITICAL FOCUS - BUSINESS INSIGHTS, NOT DATA QUALITY:
+1. Identify PERFORMANCE OPPORTUNITIES (top performers, improvement gaps, optimization potential)
+2. Highlight STRATEGIC RISKS (concentration, dependencies, underperformance)
+3. Reveal BUSINESS PATTERNS (correlations, trends, market dynamics)
+4. Provide ACTIONABLE RECOMMENDATIONS for decision-making
+5. Focus on WHAT THE DATA TELLS US ABOUT THE BUSINESS, not about data quality
+
+DO NOT focus on:
+- Missing values, duplicates, or data quality issues (unless critical)
+- Technical data problems
+- Generic data quality assessments
+
+DO focus on:
+- Performance gaps and opportunities
+- Top/bottom performers and why
+- Market concentration and diversification needs
+- Strategic relationships between metrics
+- Growth opportunities and risks
+- Actionable business recommendations
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
-  "executive_summary": "2-3 sentence high-level summary of key findings",
+  "executive_summary": "2-3 sentence strategic summary of key business findings and opportunities",
   "key_insights": [
     {
-      "title": "Specific insight title (e.g., 'Revenue Concentration Risk in Top 3 Categories')",
-      "description": "Detailed explanation with specific numbers and context",
+      "title": "Business insight title (e.g., 'Top 20% of Segments Drive 60% of Revenue - Diversification Opportunity')",
+      "description": "Detailed business explanation with specific numbers, performance gaps, and strategic implications",
       "impact": "critical|high|medium|low",
-      "action": "Specific actionable recommendation"
+      "action": "Specific strategic action executives can take"
     }
   ],
   "recommendations": [
     {
-      "category": "Category name (e.g., 'Data Quality', 'Business Strategy', 'Risk Management')",
+      "category": "Business category (e.g., 'Growth Strategy', 'Performance Optimization', 'Risk Management', 'Market Expansion')",
       "priority": "critical|high|medium|low",
-      "action": "Specific action item",
-      "details": ["Detail 1", "Detail 2"]
+      "action": "Specific strategic action item",
+      "details": ["Strategic detail 1", "Strategic detail 2"]
     }
   ]
 }
 
 INSIGHT QUALITY STANDARDS:
 - Reference specific metrics, percentages, and numbers from the data
-- Identify trends, anomalies, and patterns
-- Connect data points to business implications
-- Prioritize insights by business impact
-- Provide concrete, actionable recommendations"""
+- Identify business opportunities, risks, and performance gaps
+- Connect data patterns to strategic business implications
+- Prioritize insights by business impact and decision-making value
+- Provide concrete, actionable recommendations executives can implement"""
 
-    user_prompt = f"""Analyze the following Excel workbook data and generate comprehensive insights:
+    user_prompt = f"""Analyze the following Excel workbook data and generate STRATEGIC BUSINESS INSIGHTS for executive decision-making:
 
 {data_context}
 
-Based on this data analysis, generate:
-1. An executive summary highlighting the most important findings
-2. 3-5 key insights that are specific, data-driven, and actionable
-3. 2-4 recommendations with clear priorities and action items
+Generate BOARD-LEVEL INSIGHTS focusing on:
+1. PERFORMANCE ANALYSIS: Top/bottom performers, performance gaps, improvement opportunities
+2. STRATEGIC PATTERNS: Market concentration, diversification needs, key relationships
+3. BUSINESS OPPORTUNITIES: Growth potential, optimization areas, competitive advantages
+4. RISK ASSESSMENT: Dependencies, concentration risks, underperformance areas
+5. ACTIONABLE RECOMMENDATIONS: Strategic actions executives can take
 
-Focus on:
-- Data quality issues (missing values, duplicates, outliers)
-- Statistical patterns (correlations, distributions, trends)
-- Business implications (risks, opportunities, performance gaps)
-- Actionable next steps
+Generate:
+1. Executive summary: High-level strategic findings (2-3 sentences)
+2. 3-5 key business insights: Specific, data-driven insights with strategic implications
+3. 2-4 strategic recommendations: Actionable recommendations with priorities
+
+IMPORTANT: Focus on BUSINESS INSIGHTS that help executives make decisions. Do NOT focus on data quality issues unless they critically impact business decisions.
 
 Return ONLY valid JSON matching the format specified above."""
 

@@ -152,8 +152,38 @@ def _summarize_dataset(df: pd.DataFrame, name: str) -> Dict:
     }
 
 
+def _detect_telecom_saas_metrics(stats: Dict) -> Dict:
+    """Detect Telecom and SaaS-specific metrics in the data."""
+    telecom_keywords = ['arpu', 'revenue', 'subscriber', 'churn', 'circle', 'cssr', 'asr', 'call', 
+                       'network', 'quality', 'mou', 'usage', 'activation', 'penetration', 'market']
+    saas_keywords = ['mrr', 'arr', 'cac', 'ltv', 'churn', 'activation', 'adoption', 'usage', 
+                    'customer', 'segment', 'revenue', 'expansion', 'retention', 'feature']
+    
+    detected = {
+        'telecom_metrics': [],
+        'saas_metrics': [],
+        'is_telecom': False,
+        'is_saas': False
+    }
+    
+    for col in stats.keys():
+        col_lower = str(col).lower()
+        
+        # Check for Telecom metrics
+        if any(kw in col_lower for kw in telecom_keywords):
+            detected['telecom_metrics'].append(col)
+            detected['is_telecom'] = True
+        
+        # Check for SaaS metrics
+        if any(kw in col_lower for kw in saas_keywords):
+            detected['saas_metrics'].append(col)
+            detected['is_saas'] = True
+    
+    return detected
+
+
 def _generate_rule_based_insights(dataset_summaries: List[Dict], merged_summary: Dict, merge_summary: Dict) -> Tuple[str, List[Dict], List[Dict]]:
-    """Generate business-focused insights for executive decision-making."""
+    """Generate business-focused insights for executive decision-making with Telecom/SaaS context."""
     total_rows = sum(s.get("rows", 0) for s in dataset_summaries)
     total_sheets = len(dataset_summaries)
     
@@ -172,6 +202,11 @@ def _generate_rule_based_insights(dataset_summaries: List[Dict], merged_summary:
     stats = primary_data.get("stats", {})
     top_categories = primary_data.get("top_categories", {})
     correlations = primary_data.get("top_correlations", [])
+    
+    # Detect Telecom/SaaS context
+    industry_context = _detect_telecom_saas_metrics(stats)
+    is_telecom = industry_context['is_telecom']
+    is_saas = industry_context['is_saas']
     
     # 1. TOP PERFORMERS & OPPORTUNITIES
     if stats:
@@ -194,12 +229,24 @@ def _generate_rule_based_insights(dataset_summaries: List[Dict], merged_summary:
             spread_pct = (spread / abs(mean_val) * 100) if mean_val != 0 else 0
             
             if spread_pct > 50:  # Significant variation
+                # Use Telecom/SaaS terminology if applicable
+                metric_type = ""
+                if is_telecom and any(kw in col_name.lower() for kw in ['arpu', 'revenue', 'circle']):
+                    metric_type = "Circle/Region"
+                    context = "Top circles achieve significantly higher performance"
+                elif is_saas and any(kw in col_name.lower() for kw in ['mrr', 'arr', 'segment']):
+                    metric_type = "Customer Segment"
+                    context = "Top segments show superior performance"
+                else:
+                    metric_type = "Performance"
+                    context = "Top performers achieve significantly higher performance"
+                
                 key_insights.append({
-                    "title": f"Performance Opportunity: {col_name} Shows {spread_pct:.0f}% Variation",
+                    "title": f"{metric_type} Opportunity: {col_name} Shows {spread_pct:.0f}% Variation",
                     "description": (
                         f"**Current State**: {col_name} ranges from {min_val:,.2f} to {max_val:,.2f} "
                         f"(average: {mean_val:,.2f}). **Gap Analysis**: {spread:,.2f} point spread indicates "
-                        f"significant performance differences. **Opportunity**: Top performers achieve {max_val:,.2f} "
+                        f"significant performance differences. **Opportunity**: {context} at {max_val:,.2f} "
                         f"while bottom performers are at {min_val:,.2f} - closing this gap could drive "
                         f"{((max_val - mean_val) / mean_val * 100):.1f}% improvement in average performance."
                     ),
@@ -241,22 +288,39 @@ def _generate_rule_based_insights(dataset_summaries: List[Dict], merged_summary:
             top_pct = (top_cat["count"] / total_count * 100) if total_count > 0 else 0
             second_pct = (second_cat["count"] / total_count * 100) if total_count > 0 else 0
             
-            # Concentration risk
+            # Concentration risk - use Telecom/SaaS terminology
+            col_lower = str(col).lower()
+            is_circle = 'circle' in col_lower or 'region' in col_lower
+            is_segment = 'segment' in col_lower or 'category' in col_lower
+            
             if top_pct > 60:
+                if is_circle or is_telecom:
+                    title = f"Circle/Region Concentration: {col} Dominated by '{top_cat['value']}'"
+                    context = "High revenue concentration in top circles creates market dependency risk"
+                    action_context = "circle/region"
+                elif is_segment or is_saas:
+                    title = f"Customer Segment Concentration: {col} Dominated by '{top_cat['value']}'"
+                    context = "High revenue concentration in top segments creates customer dependency risk"
+                    action_context = "segment"
+                else:
+                    title = f"Market Concentration: {col} Dominated by '{top_cat['value']}'"
+                    context = "High concentration creates dependency risk"
+                    action_context = "category"
+                
                 key_insights.append({
-                    "title": f"Market Concentration: {col} Dominated by '{top_cat['value']}'",
+                    "title": title,
                     "description": (
                         f"**Distribution**: '{top_cat['value']}' represents {top_pct:.1f}% of records "
                         f"({top_cat['count']:,} out of {total_count:,}), followed by '{second_cat['value']}' "
-                        f"at {second_pct:.1f}%. **Risk**: High concentration creates dependency risk. "
-                        f"**Opportunity**: Diversification could reduce risk and unlock growth in underperforming segments."
+                        f"at {second_pct:.1f}%. **Risk**: {context}. "
+                        f"**Opportunity**: Diversification could reduce risk and unlock growth in underperforming {action_context}s."
                     ),
                     "impact": "high" if top_pct > 80 else "medium",
                     "action": (
                         f"**Diversification Strategy**: (1) Analyze why '{top_cat['value']}' dominates. "
-                        f"(2) Develop growth plan for '{second_cat['value']}' and other segments. "
-                        f"(3) Target: Reduce top category to <60% within 6 months. "
-                        f"**Risk Mitigation**: Build resilience by reducing over-reliance on single segment."
+                        f"(2) Develop growth plan for '{second_cat['value']}' and other {action_context}s. "
+                        f"(3) Target: Reduce top {action_context} to <60% within 6 months. "
+                        f"**Risk Mitigation**: Build resilience by reducing over-reliance on single {action_context}."
                     )
                 })
             # Balanced distribution opportunity
@@ -349,22 +413,37 @@ def _generate_rule_based_insights(dataset_summaries: List[Dict], merged_summary:
             })
     
     # 6. EXECUTIVE SUMMARY
+    industry_note = ""
+    if is_telecom and is_saas:
+        industry_note = "Telecom and SaaS business analysis"
+    elif is_telecom:
+        industry_note = "Telecom business analysis"
+    elif is_saas:
+        industry_note = "SaaS business analysis"
+    
     if key_insights:
         high_impact = [i for i in key_insights if i.get("impact") in ["critical", "high"]]
-        exec_parts.append(
+        summary_text = (
+            f"{industry_note + ': ' if industry_note else ''}"
             f"Analysis of {total_rows:,} records reveals {len(high_impact)} high-priority opportunities "
             f"and {len(key_insights)} strategic insights for decision-making."
         )
+        exec_parts.append(summary_text)
     else:
         # Fallback: Generate basic business insights
         if stats:
             top_metric = list(stats.items())[0]
-            exec_parts.append(
+            summary_text = (
+                f"{industry_note + ': ' if industry_note else ''}"
                 f"Analysis of {total_rows:,} records identifies {top_metric[0]} as primary KPI "
                 f"(average: {top_metric[1].get('mean', 0):,.2f})."
             )
+            exec_parts.append(summary_text)
         else:
-            exec_parts.append(f"Analyzed {total_rows:,} records across {total_sheets} dataset(s).")
+            exec_parts.append(
+                f"{industry_note + ': ' if industry_note else ''}"
+                f"Analyzed {total_rows:,} records across {total_sheets} dataset(s)."
+            )
     
     executive_summary = " ".join(exec_parts) if exec_parts else f"Analyzed {total_rows:,} records."
     
@@ -437,14 +516,35 @@ def _generate_llm_insights(dataset_summaries: List[Dict], merged_summary: Dict,
     # Format data summary for LLM in a more readable way
     data_context = _format_data_for_llm(dataset_summaries, merged_summary, merge_summary)
 
-    system_prompt = """You are a strategic business analyst and executive advisor. Your role is to analyze Excel data and generate BOARD-LEVEL BUSINESS INSIGHTS that help executives make strategic decisions.
+    system_prompt = """You are an expert TELECOM AND SAAS BUSINESS ANALYST with deep industry expertise. Your role is to analyze Excel data and generate BOARD-LEVEL BUSINESS INSIGHTS specifically tailored for Telecom and SaaS businesses.
 
-CRITICAL FOCUS - BUSINESS INSIGHTS, NOT DATA QUALITY:
-1. Identify PERFORMANCE OPPORTUNITIES (top performers, improvement gaps, optimization potential)
-2. Highlight STRATEGIC RISKS (concentration, dependencies, underperformance)
-3. Reveal BUSINESS PATTERNS (correlations, trends, market dynamics)
-4. Provide ACTIONABLE RECOMMENDATIONS for decision-making
+YOUR EXPERTISE:
+- TELECOM INDUSTRY: Network performance, ARPU, churn, subscriber growth, circle-wise analysis, call quality metrics, revenue per user, market penetration, competitive positioning
+- SAAS INDUSTRY: MRR/ARR, customer acquisition cost (CAC), lifetime value (LTV), churn rates, activation rates, expansion revenue, product usage, feature adoption, customer segments
+- BUSINESS METRICS: Revenue concentration, customer segmentation, growth trends, retention strategies, market share, competitive analysis
+
+CRITICAL FOCUS - TELECOM & SAAS BUSINESS INSIGHTS:
+1. Identify PERFORMANCE OPPORTUNITIES (top circles/segments, improvement gaps, ARPU optimization, churn reduction)
+2. Highlight STRATEGIC RISKS (customer concentration, churn risks, market share erosion, competitive threats)
+3. Reveal BUSINESS PATTERNS (revenue trends, customer behavior, product adoption, network performance)
+4. Provide ACTIONABLE RECOMMENDATIONS for Telecom/SaaS decision-making
 5. Focus on WHAT THE DATA TELLS US ABOUT THE BUSINESS, not about data quality
+
+TELECOM-SPECIFIC INSIGHTS TO LOOK FOR:
+- Circle/region performance variations and market opportunities
+- Network quality metrics (CSSR, ASR, call drop rates) and their business impact
+- ARPU trends and revenue optimization opportunities
+- Subscriber growth patterns and market penetration
+- Churn analysis and retention strategies
+- Competitive positioning and market share
+
+SAAS-SPECIFIC INSIGHTS TO LOOK FOR:
+- MRR/ARR growth trends and expansion opportunities
+- Customer acquisition efficiency (CAC payback, LTV:CAC ratio)
+- Product adoption and feature usage patterns
+- Churn analysis by segment and retention strategies
+- Expansion revenue opportunities (upsell, cross-sell)
+- Customer segmentation and lifecycle analysis
 
 DO NOT focus on:
 - Missing values, duplicates, or data quality issues (unless critical)
@@ -452,58 +552,79 @@ DO NOT focus on:
 - Generic data quality assessments
 
 DO focus on:
-- Performance gaps and opportunities
-- Top/bottom performers and why
-- Market concentration and diversification needs
-- Strategic relationships between metrics
-- Growth opportunities and risks
-- Actionable business recommendations
+- Telecom/SaaS performance gaps and opportunities
+- Top/bottom performers (circles, segments, products) and why
+- Revenue concentration and diversification needs
+- Strategic relationships between metrics (e.g., ARPU vs churn, MRR vs LTV)
+- Growth opportunities and competitive risks
+- Actionable Telecom/SaaS business recommendations
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
-  "executive_summary": "2-3 sentence strategic summary of key business findings and opportunities",
+  "executive_summary": "2-3 sentence strategic summary of key Telecom/SaaS business findings and opportunities",
   "key_insights": [
     {
-      "title": "Business insight title (e.g., 'Top 20% of Segments Drive 60% of Revenue - Diversification Opportunity')",
-      "description": "Detailed business explanation with specific numbers, performance gaps, and strategic implications",
+      "title": "Telecom/SaaS insight title (e.g., 'Top 3 Circles Drive 55% of Revenue - Market Diversification Needed', 'MRR Growth Slowing: Churn Rate at 5.2% Requires Retention Focus', 'ARPU Gap: Top Circle at ₹185 vs Bottom at ₹120 - Optimization Opportunity')",
+      "description": "Detailed Telecom/SaaS business explanation with specific numbers, performance gaps, and strategic implications",
       "impact": "critical|high|medium|low",
-      "action": "Specific strategic action executives can take"
+      "action": "Specific strategic action Telecom/SaaS executives can take"
     }
   ],
   "recommendations": [
     {
-      "category": "Business category (e.g., 'Growth Strategy', 'Performance Optimization', 'Risk Management', 'Market Expansion')",
+      "category": "Telecom/SaaS category (e.g., 'Revenue Optimization', 'Churn Reduction', 'Market Expansion', 'Network Performance', 'Customer Acquisition', 'Product Adoption')",
       "priority": "critical|high|medium|low",
-      "action": "Specific strategic action item",
+      "action": "Specific strategic action item for Telecom/SaaS business",
       "details": ["Strategic detail 1", "Strategic detail 2"]
     }
   ]
 }
 
 INSIGHT QUALITY STANDARDS:
-- Reference specific metrics, percentages, and numbers from the data
-- Identify business opportunities, risks, and performance gaps
-- Connect data patterns to strategic business implications
+- Reference specific Telecom/SaaS metrics, percentages, and numbers from the data
+- Identify industry-specific opportunities, risks, and performance gaps
+- Connect data patterns to Telecom/SaaS strategic business implications
+- Use industry terminology (ARPU, MRR, churn, circles, segments, CAC, LTV, etc.)
 - Prioritize insights by business impact and decision-making value
-- Provide concrete, actionable recommendations executives can implement"""
+- Provide concrete, actionable recommendations Telecom/SaaS executives can implement"""
 
-    user_prompt = f"""Analyze the following Excel workbook data and generate STRATEGIC BUSINESS INSIGHTS for executive decision-making:
+    user_prompt = f"""Analyze the following Excel workbook data as a TELECOM AND SAAS BUSINESS ANALYST and generate STRATEGIC BUSINESS INSIGHTS for executive decision-making:
 
 {data_context}
 
-Generate BOARD-LEVEL INSIGHTS focusing on:
-1. PERFORMANCE ANALYSIS: Top/bottom performers, performance gaps, improvement opportunities
-2. STRATEGIC PATTERNS: Market concentration, diversification needs, key relationships
-3. BUSINESS OPPORTUNITIES: Growth potential, optimization areas, competitive advantages
-4. RISK ASSESSMENT: Dependencies, concentration risks, underperformance areas
-5. ACTIONABLE RECOMMENDATIONS: Strategic actions executives can take
+Think like a Telecom and SaaS business analyst. Generate BOARD-LEVEL INSIGHTS focusing on:
+
+TELECOM PERSPECTIVE:
+- Circle/region performance analysis and market opportunities
+- Network quality metrics and their business impact (CSSR, ASR, call quality)
+- ARPU trends, revenue optimization, and subscriber growth
+- Churn analysis and retention strategies
+- Market penetration and competitive positioning
+
+SAAS PERSPECTIVE:
+- MRR/ARR growth trends and expansion revenue opportunities
+- Customer acquisition efficiency (CAC, LTV, payback periods)
+- Product adoption, feature usage, and activation rates
+- Churn analysis by segment and retention strategies
+- Customer segmentation and lifecycle value
+
+GENERAL BUSINESS ANALYSIS:
+1. PERFORMANCE ANALYSIS: Top/bottom performers (circles, segments, products), performance gaps, improvement opportunities
+2. STRATEGIC PATTERNS: Revenue concentration, market diversification needs, key metric relationships
+3. BUSINESS OPPORTUNITIES: Growth potential, ARPU/MRR optimization, competitive advantages
+4. RISK ASSESSMENT: Customer concentration, churn risks, market share erosion, underperformance areas
+5. ACTIONABLE RECOMMENDATIONS: Strategic actions Telecom/SaaS executives can take
 
 Generate:
-1. Executive summary: High-level strategic findings (2-3 sentences)
-2. 3-5 key business insights: Specific, data-driven insights with strategic implications
-3. 2-4 strategic recommendations: Actionable recommendations with priorities
+1. Executive summary: High-level strategic Telecom/SaaS findings (2-3 sentences)
+2. 3-5 key business insights: Specific, data-driven insights with Telecom/SaaS strategic implications
+3. 2-4 strategic recommendations: Actionable recommendations with priorities for Telecom/SaaS business
 
-IMPORTANT: Focus on BUSINESS INSIGHTS that help executives make decisions. Do NOT focus on data quality issues unless they critically impact business decisions.
+IMPORTANT: 
+- Think like a Telecom and SaaS business analyst
+- Use industry-specific terminology and context
+- Focus on BUSINESS INSIGHTS that help Telecom/SaaS executives make decisions
+- Do NOT focus on data quality issues unless they critically impact business decisions
 
 Return ONLY valid JSON matching the format specified above."""
 

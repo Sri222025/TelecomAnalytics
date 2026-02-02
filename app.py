@@ -9,20 +9,37 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
-import seaborn as sns
 import matplotlib.pyplot as plt
-from analysis_engine_groq import TelecomSaaSAnalyzerWithAI
-import io
 from datetime import datetime
+import io
 import os
 from dotenv import load_dotenv
+
+# Try to import seaborn, but don't fail if it's not available
+try:
+    import seaborn as sns
+    HAS_SEABORN = True
+except ImportError:
+    HAS_SEABORN = False
+
+# Import analysis engine - try Groq version first, fallback to standard
+try:
+    from analysis_engine_groq import TelecomSaaSAnalyzerWithAI as TelecomSaaSAnalyzer
+    HAS_GROQ = True
+except ImportError:
+    try:
+        from analysis_engine import TelecomSaaSAnalyzer
+        HAS_GROQ = False
+    except ImportError:
+        st.error("Error: analysis_engine module not found. Please ensure analysis_engine.py or analysis_engine_groq.py is in the project directory.")
+        st.stop()
 
 # Load environment variables
 load_dotenv()
 
 # Page configuration
 st.set_page_config(
-    page_title="Telecom & SaaS Data Intelligence with AI",
+    page_title="Telecom & SaaS Data Intelligence",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -237,25 +254,30 @@ def create_insights_dashboard(insights_dict):
 def main():
     # Header
     st.markdown('<div class="header-title">📊 Telecom & SaaS Data Intelligence Tool</div>', unsafe_allow_html=True)
-    st.markdown("Analyze patterns, correlations, and generate **AI-powered insights** from your Telecom and SaaS data using Groq Llama 3")
+    
+    if HAS_GROQ:
+        st.markdown("Analyze patterns, correlations, and generate **AI-powered insights** from your Telecom and SaaS data using Groq Llama 3")
+    else:
+        st.markdown("Analyze patterns, correlations, and generate insights from your Telecom and SaaS data")
     
     # Sidebar
     with st.sidebar:
         st.header("⚙️ Configuration")
         
-        # Groq API Key
-        st.subheader("🤖 AI Configuration")
-        api_key_input = st.text_input(
-            "Groq API Key",
-            type="password",
-            help="Get your API key from https://console.groq.com",
-            value=st.session_state.groq_api_key or os.getenv('GROQ_API_KEY', '')
-        )
-        
-        if api_key_input:
-            st.session_state.groq_api_key = api_key_input
-        
-        st.divider()
+        # Groq API Key (only show if Groq support is available)
+        if HAS_GROQ:
+            st.subheader("🤖 AI Configuration")
+            api_key_input = st.text_input(
+                "Groq API Key (Optional)",
+                type="password",
+                help="Get your API key from https://console.groq.com",
+                value=st.session_state.groq_api_key or os.getenv('GROQ_API_KEY', '')
+            )
+            
+            if api_key_input:
+                st.session_state.groq_api_key = api_key_input
+            
+            st.divider()
         
         # File upload
         st.subheader("📁 Data Upload")
@@ -279,23 +301,36 @@ def main():
                 st.error(f"Error loading file: {error}")
                 return
             
-            # Initialize analyzer with Groq API key
-            analyzer = TelecomSaaSAnalyzerWithAI(
-                dataframes,
-                groq_api_key=st.session_state.groq_api_key
-            )
+            # Initialize analyzer with Groq API key if available
+            if HAS_GROQ:
+                analyzer = TelecomSaaSAnalyzer(
+                    dataframes,
+                    groq_api_key=st.session_state.groq_api_key
+                )
+            else:
+                analyzer = TelecomSaaSAnalyzer(dataframes)
+            
             analyzer.analyze_all()
             st.session_state.analyzer = analyzer
         
         # Create tabs for different views
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-            "📊 Overview",
-            "🔗 Correlations",
-            "📈 Trends & Patterns",
-            "💡 Insights",
-            "🤖 AI Analysis",
-            "📋 Raw Data"
-        ])
+        if HAS_GROQ:
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+                "📊 Overview",
+                "🔗 Correlations",
+                "📈 Trends & Patterns",
+                "💡 Insights",
+                "🤖 AI Analysis",
+                "📋 Raw Data"
+            ])
+        else:
+            tab1, tab2, tab3, tab4, tab5 = st.tabs([
+                "📊 Overview",
+                "🔗 Correlations",
+                "📈 Trends & Patterns",
+                "💡 Insights",
+                "📋 Raw Data"
+            ])
         
         # Tab 1: Overview
         with tab1:
@@ -442,26 +477,28 @@ def main():
             # Create insights dashboard
             create_insights_dashboard(analyzer.insights)
         
-        # Tab 5: AI Analysis
-        with tab5:
-            st.header("🤖 AI-Powered Analysis with Groq Llama 3")
-            
-            if not st.session_state.groq_api_key:
-                st.warning("⚠️ Groq API key not configured. Please add your API key in the sidebar to enable AI insights.")
-                st.info("Get your free API key from [Groq Console](https://console.groq.com)")
-            else:
-                st.success("✅ Groq API configured")
+        # Tab 5: AI Analysis (only if Groq is available)
+        if HAS_GROQ:
+            with tab5:
+                st.header("🤖 AI-Powered Analysis with Groq Llama 3")
                 
-                # Display AI insights for each sheet
-                for sheet_name, ai_insights in analyzer.ai_insights.items():
-                    with st.expander(f"🤖 AI Analysis - {sheet_name}", expanded=True):
-                        if ai_insights:
-                            create_ai_insights_display(ai_insights)
-                        else:
-                            st.info("Generating AI insights...")
+                if not st.session_state.groq_api_key:
+                    st.warning("⚠️ Groq API key not configured. Please add your API key in the sidebar to enable AI insights.")
+                    st.info("Get your free API key from [Groq Console](https://console.groq.com)")
+                else:
+                    st.success("✅ Groq API configured")
+                    
+                    # Display AI insights for each sheet
+                    for sheet_name, ai_insights in analyzer.ai_insights.items():
+                        with st.expander(f"🤖 AI Analysis - {sheet_name}", expanded=True):
+                            if ai_insights:
+                                create_ai_insights_display(ai_insights)
+                            else:
+                                st.info("Generating AI insights...")
         
-        # Tab 6: Raw Data
-        with tab6:
+        # Tab 6 or 5: Raw Data
+        raw_data_tab = tab6 if HAS_GROQ else tab5
+        with raw_data_tab:
             st.header("Raw Data Explorer")
             
             sheet_selection = st.selectbox(
@@ -548,30 +585,31 @@ def main():
             - ✅ Anomaly detection
             - ✅ Distribution analysis
             - ✅ Domain-specific insights
-            - ✅ **AI-powered analysis with Groq Llama 3**
+            - ✅ **AI-powered analysis with Groq Llama 3** (if configured)
             - ✅ Data export capabilities
             """)
         
-        with st.expander("🤖 About AI Integration"):
-            st.markdown("""
-            ### Groq Llama 3 Integration
-            
-            This tool uses **Groq's Llama 3 model** to provide intelligent, context-aware analysis of your telecom data.
-            
-            **Features:**
-            - Automatic insight generation based on data patterns
-            - Actionable recommendations for network optimization
-            - Priority-based findings (High/Medium/Low)
-            - Natural language analysis of complex metrics
-            
-            **Getting Started:**
-            1. Visit [Groq Console](https://console.groq.com)
-            2. Create a free account
-            3. Generate an API key
-            4. Add it in the sidebar configuration
-            
-            **Note:** Groq offers free API access with generous rate limits for development and testing.
-            """)
+        if HAS_GROQ:
+            with st.expander("🤖 About AI Integration"):
+                st.markdown("""
+                ### Groq Llama 3 Integration
+                
+                This tool uses **Groq's Llama 3 model** to provide intelligent, context-aware analysis of your telecom data.
+                
+                **Features:**
+                - Automatic insight generation based on data patterns
+                - Actionable recommendations for network optimization
+                - Priority-based findings (High/Medium/Low)
+                - Natural language analysis of complex metrics
+                
+                **Getting Started:**
+                1. Visit [Groq Console](https://console.groq.com)
+                2. Create a free account
+                3. Generate an API key
+                4. Add it in the sidebar configuration
+                
+                **Note:** Groq offers free API access with generous rate limits for development and testing.
+                """)
         
         with st.expander("📊 Sample Data Structure"):
             st.markdown("""
